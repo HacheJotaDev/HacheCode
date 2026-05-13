@@ -20,17 +20,17 @@ interface ChatMessageInput {
   content: string;
 }
 
-/**
- * Stream chat completions using any OpenAI-compatible API.
- * Works with: OpenAI, ChatGLM/BigModel, Groq, Together, any compatible endpoint.
- */
-async function streamChatCompletions(
+// ─────────────────────────────────────────────
+// Strategy 1: OpenAI-compatible API
+// Works with: OpenAI, ChatGLM, Groq, Together, etc.
+// Requires: API_BASE_URL + API_KEY env vars
+// ─────────────────────────────────────────────
+async function streamOpenAICompatible(
   apiMessages: { role: string; content: string }[],
   config: {
     baseUrl: string;
     apiKey: string;
     model: string;
-    stream: boolean;
   }
 ): Promise<Response> {
   const url = `${config.baseUrl}/chat/completions`;
@@ -43,7 +43,7 @@ async function streamChatCompletions(
   const body: Record<string, unknown> = {
     model: config.model,
     messages: apiMessages,
-    stream: config.stream,
+    stream: true,
   };
 
   const response = await fetch(url, {
@@ -60,6 +60,169 @@ async function streamChatCompletions(
   return response;
 }
 
+function createSSEStreamFromOpenAI(
+  upstreamResponse: Response,
+  model: string
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = upstreamResponse.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let totalContent = "";
+      let promptTokens = 0;
+      let completionTokens = 0;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === "data: [DONE]") continue;
+            if (!trimmed.startsWith("data: ")) continue;
+
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json.choices?.[0]?.delta?.content;
+              if (delta) {
+                totalContent += delta;
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({ type: "delta", content: delta })}\n\n`
+                  )
+                );
+              }
+
+              if (json.usage) {
+                promptTokens = json.usage.prompt_tokens || 0;
+                completionTokens = json.usage.completion_tokens || 0;
+              }
+            } catch {
+              // Skip malformed JSON chunks
+            }
+          }
+        }
+
+        if (totalContent) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: "done",
+                content: totalContent,
+                usage: {
+                  promptTokens,
+                  completionTokens,
+                  totalTokens: promptTokens + completionTokens,
+                },
+                model,
+              })}\n\n`
+            )
+          );
+        }
+
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      } catch (error) {
+        console.error("Stream error:", error);
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "error", error: "Stream interrupted" })}\n\n`
+          )
+        );
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+// ─────────────────────────────────────────────
+// Strategy 2: Z.ai SDK (works inside Z.ai codespace)
+// No env vars needed - SDK handles auth internally
+// ─────────────────────────────────────────────
+async function handleWithZaiSDK(
+  apiMessages: { role: string; content: string }[],
+  model: string
+): Promise<Response> {
+  // Import Z.ai SDK - available as project dependency (works in Z.ai codespace)
+  const ZAI = (await import("z-ai-web-dev-sdk")).default;
+  const zai = await ZAI.create();
+
+  const completion = await zai.chat.completions.create({
+    messages: apiMessages as { role: "system" | "user" | "assistant"; content: string }[],
+    stream: false,
+  });
+
+  const content = completion.choices?.[0]?.message?.content || "";
+
+  if (!content) {
+    throw new Error("SDK: respuesta vacía");
+  }
+
+  // Return as SSE stream so the frontend gets consistent format
+  const encoder = new TextEncoder();
+  const usage = completion.usage;
+  const promptTokens = usage?.prompt_tokens || 0;
+  const completionTokens = usage?.completion_tokens || 0;
+
+  const sseStream = new ReadableStream({
+    start(controller) {
+      // Send the full content as one delta
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: "delta", content })}\n\n`
+        )
+      );
+
+      // Send done event
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            type: "done",
+            content,
+            usage: {
+              promptTokens,
+              completionTokens,
+              totalTokens: promptTokens + completionTokens,
+            },
+            model: completion.model || model,
+          })}\n\n`
+        )
+      );
+
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+
+  return new Response(sseStream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+// ─────────────────────────────────────────────
+// Main POST handler with fallback chain
+// ─────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -82,155 +245,44 @@ export async function POST(request: Request) {
       })),
     ];
 
-    // Read configuration from environment variables
+    const apiModel = process.env.API_MODEL || model || "glm-4-plus";
+
+    // ── Strategy 1: OpenAI-compatible API ──
     const baseUrl = process.env.API_BASE_URL;
     const apiKey = process.env.API_KEY;
-    const apiModel = process.env.API_MODEL || model || "glm-4-plus";
-    const useStream = process.env.API_STREAM !== "false"; // default: true
 
-    if (!baseUrl || !apiKey) {
-      return Response.json(
-        {
-          error:
-            "Variables de entorno no configuradas. Debes configurar API_BASE_URL y API_KEY en tu plataforma de deploy (Vercel/Railway).",
-        },
-        { status: 500 }
-      );
-    }
-
-    // Try streaming first (best UX)
-    if (useStream) {
+    if (baseUrl && apiKey) {
+      console.log("[Chat] Using OpenAI-compatible API:", baseUrl);
       try {
-        const upstreamResponse = await streamChatCompletions(apiMessages, {
+        const upstreamResponse = await streamOpenAICompatible(apiMessages, {
           baseUrl,
           apiKey,
           model: apiModel,
-          stream: true,
         });
-
-        const encoder = new TextEncoder();
-        const stream = new ReadableStream({
-          async start(controller) {
-            const reader = upstreamResponse.body!.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-            let totalContent = "";
-            let promptTokens = 0;
-            let completionTokens = 0;
-
-            try {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || "";
-
-                for (const line of lines) {
-                  const trimmed = line.trim();
-                  if (!trimmed || trimmed === "data: [DONE]") continue;
-                  if (!trimmed.startsWith("data: ")) continue;
-
-                  try {
-                    const json = JSON.parse(trimmed.slice(6));
-                    const delta = json.choices?.[0]?.delta?.content;
-                    if (delta) {
-                      totalContent += delta;
-                      controller.enqueue(
-                        encoder.encode(
-                          `data: ${JSON.stringify({ type: "delta", content: delta })}\n\n`
-                        )
-                      );
-                    }
-
-                    if (json.usage) {
-                      promptTokens = json.usage.prompt_tokens || 0;
-                      completionTokens = json.usage.completion_tokens || 0;
-                    }
-                  } catch {
-                    // Skip malformed JSON chunks
-                  }
-                }
-              }
-
-              // Send final event with usage
-              if (totalContent) {
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({
-                      type: "done",
-                      content: totalContent,
-                      usage: {
-                        promptTokens,
-                        completionTokens,
-                        totalTokens: promptTokens + completionTokens,
-                      },
-                      model: apiModel,
-                    })}\n\n`
-                  )
-                );
-              }
-
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              controller.close();
-            } catch (error) {
-              console.error("Stream error:", error);
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ type: "error", error: "Stream interrupted" })}\n\n`
-                )
-              );
-              controller.close();
-            }
-          },
-        });
-
-        return new Response(stream, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache, no-transform",
-            Connection: "keep-alive",
-            "X-Accel-Buffering": "no",
-          },
-        });
-      } catch (streamError) {
-        console.error("Streaming failed, falling back to non-streaming:", streamError);
-        // Fall through to non-streaming
+        return createSSEStreamFromOpenAI(upstreamResponse, apiModel);
+      } catch (apiError) {
+        console.error("[Chat] OpenAI API failed:", apiError);
+        // Fall through to SDK
       }
     }
 
-    // Non-streaming fallback
-    const upstreamResponse = await streamChatCompletions(apiMessages, {
-      baseUrl,
-      apiKey,
-      model: apiModel,
-      stream: false,
-    });
-
-    const data = await upstreamResponse.json();
-    const content = data.choices?.[0]?.message?.content || "";
-
-    if (!content) {
-      return Response.json(
-        { error: "No se pudo generar una respuesta. Intenta de nuevo." },
-        { status: 500 }
-      );
+    // ── Strategy 2: Z.ai SDK (codespace) ──
+    try {
+      console.log("[Chat] Trying Z.ai SDK fallback...");
+      return await handleWithZaiSDK(apiMessages, apiModel);
+    } catch (sdkError) {
+      console.error("[Chat] Z.ai SDK failed:", sdkError);
+      // Fall through to error
     }
 
-    const usage = data.usage;
-    return Response.json({
-      content,
-      model: apiModel,
-      usage: usage
-        ? {
-            promptTokens: usage.prompt_tokens || 0,
-            completionTokens: usage.completion_tokens || 0,
-            totalTokens:
-              (usage.prompt_tokens || 0) + (usage.completion_tokens || 0),
-          }
-        : undefined,
-    });
+    // ── No strategy worked ──
+    return Response.json(
+      {
+        error:
+          "No se pudo conectar con ninguna API. Configura API_BASE_URL y API_KEY para deploy externo, o ejecuta dentro de Z.ai.",
+      },
+      { status: 500 }
+    );
   } catch (error: unknown) {
     console.error("Chat API error:", error);
     const message =
