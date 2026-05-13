@@ -25,3 +25,31 @@ Stage Summary:
 - UI is cleaner and more modern with refined spacing, colors, and borders
 - All text is in correct Spanish with proper accents (á, é, í, ó, ú, ñ)
 - Error states now display with retry button
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Rename to Hache Code and fix 502 error
+
+Work Log:
+- Renamed all "Claude Code" references to "Hache Code" across 6 files:
+  - src/app/api/chat/route.ts (system prompt)
+  - src/store/chat-store.ts (welcome message)
+  - src/app/layout.tsx (title, description, keywords, authors)
+  - src/app/page.tsx (header bar)
+  - src/components/sidebar/Sidebar.tsx (sidebar header)
+  - src/components/chat/ChatMessage.tsx (message author name)
+- Fixed 502 error by:
+  - Increased maxDuration from 60 to 120 seconds
+  - Added deadline-based race condition (100s hard deadline) in API route
+  - Increased client-side AbortController timeout from 55s to 110s
+  - Added message limiting (last 20 messages) to prevent huge prompts
+  - Updated Caddyfile with read_timeout and write_timeout of 120s
+- Verified zero remaining "Claude Code" references in source code
+- Tested: simple messages work, code generation (calculator) works in ~40s
+
+Stage Summary:
+- App fully renamed to "Hache Code"
+- 502 error root cause: timeout on long API calls (code generation takes ~30-40s)
+- All timeouts increased to accommodate longer AI responses
+- Chat API verified working for both simple and code generation requests

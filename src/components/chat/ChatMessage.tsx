@@ -51,7 +51,7 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
         {/* Nombre */}
         <div className="flex items-center gap-2 mb-1">
           <span className="text-[11px] font-semibold text-foreground/70">
-            {isUser ? "Tú" : "Claude Code"}
+            {isUser ? "Tú" : "Hache Code"}
           </span>
           {!isUser && !isWelcome && !isError && (
             <span className="text-[10px] text-muted-foreground/25">

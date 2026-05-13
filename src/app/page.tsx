@@ -40,7 +40,7 @@ export default function HomePage() {
                 <Sparkles className="h-3 w-3 text-white" />
               </div>
               <span className="text-xs font-semibold text-foreground/80 tracking-tight">
-                Claude Code
+                Hache Code
               </span>
               <span className="text-[10px] text-muted-foreground/30 font-mono bg-surface px-1.5 py-0.5 rounded">
                 ~/proyecto

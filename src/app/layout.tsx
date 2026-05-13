@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Claude Code — Asistente IA de Codigo",
-  description: "Asistente de programacion con IA en tu navegador. Escribe, depura y entiende codigo con Claude.",
-  keywords: ["Claude Code", "IA", "asistente codigo", "programacion", "TypeScript"],
-  authors: [{ name: "Claude Code" }],
+  title: "Hache Code — Asistente IA de Codigo",
+  description: "Asistente de programacion con IA en tu navegador. Escribe, depura y entiende codigo con Hache Code.",
+  keywords: ["Hache Code", "IA", "asistente codigo", "programacion", "TypeScript"],
+  authors: [{ name: "Hache Code" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },

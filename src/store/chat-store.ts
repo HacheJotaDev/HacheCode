@@ -64,7 +64,7 @@ const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now(
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content: `Hola, soy **Claude Code**, tu asistente de programación con IA.
+  content: `Hola, soy **Hache Code**, tu asistente de programación con IA.
 
 Puedo ayudarte con:
 
@@ -134,7 +134,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       apiMessages.push({ role: "user", content });
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 55000);
+      const timeoutId = setTimeout(() => controller.abort(), 110000);
 
       const response = await fetch("/api/chat", {
         method: "POST",
