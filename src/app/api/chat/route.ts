@@ -35,7 +35,7 @@ async function callWithSDK(
 }
 
 /**
- * Stream chat completions using env vars (for Vercel and other cloud platforms)
+ * Call the Z.ai gateway directly using env vars (for when gateway is accessible)
  * Uses the same headers and format as z-ai-web-dev-sdk internally
  */
 async function streamWithEnvVars(
@@ -44,7 +44,6 @@ async function streamWithEnvVars(
 ): Promise<Response> {
   const url = `${config.baseUrl}/chat/completions`;
 
-  // Same headers as z-ai-web-dev-sdk
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${config.apiKey}`,
@@ -81,6 +80,30 @@ async function streamWithEnvVars(
   return response;
 }
 
+/**
+ * Use a proxy endpoint (like codes.space-z.ai) that runs the SDK internally.
+ * This is the easiest way to make it work on Vercel without needing
+ * direct access to the Z.ai gateway.
+ */
+async function callViaProxy(
+  apiMessages: { role: "user" | "assistant" | "system"; content: string }[],
+  proxyUrl: string,
+  model: string
+): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  const response = await fetch(proxyUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: apiMessages, model }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    throw new Error(`Proxy request failed (${response.status}): ${errorText}`);
+  }
+
+  return await response.json();
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -103,10 +126,10 @@ export async function POST(request: Request) {
       })),
     ];
 
+    // Strategy 1: Direct gateway access via env vars (if available)
     const baseUrl = process.env.ZAI_BASE_URL;
     const apiKey = process.env.ZAI_API_KEY;
 
-    // If env vars are configured, use streaming (best for Vercel)
     if (baseUrl && apiKey) {
       const config = {
         baseUrl,
@@ -119,7 +142,6 @@ export async function POST(request: Request) {
       try {
         const upstreamResponse = await streamWithEnvVars(apiMessages, config);
 
-        // Create a passthrough stream that re-emits SSE events cleanly
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           async start(controller) {
@@ -154,7 +176,6 @@ export async function POST(request: Request) {
                       );
                     }
 
-                    // Capture usage if present
                     if (json.usage) {
                       promptTokens = json.usage.prompt_tokens || 0;
                       completionTokens = json.usage.completion_tokens || 0;
@@ -165,7 +186,6 @@ export async function POST(request: Request) {
                 }
               }
 
-              // Send usage info at the end
               if (totalContent) {
                 controller.enqueue(
                   encoder.encode(
@@ -207,11 +227,28 @@ export async function POST(request: Request) {
         });
       } catch (streamError) {
         console.error("Streaming failed:", streamError);
-        // Fall through to non-streaming SDK approach
+        // Fall through to next strategy
       }
     }
 
-    // Fallback: Try SDK (works locally with .z-ai-config file)
+    // Strategy 2: Proxy through a Z.ai platform instance
+    const proxyUrl = process.env.ZAI_PROXY_URL;
+
+    if (proxyUrl) {
+      try {
+        const result = await callViaProxy(apiMessages, proxyUrl, model || "claude-sonnet-4");
+        return Response.json({
+          content: result.content,
+          model: model || "hache-sonnet-4",
+          usage: result.usage,
+        });
+      } catch (proxyError) {
+        console.error("Proxy failed:", proxyError);
+        // Fall through to SDK
+      }
+    }
+
+    // Strategy 3: SDK fallback (works locally in Z.ai environment)
     try {
       const completion = await callWithSDK(apiMessages);
       const content = completion.choices?.[0]?.message?.content || "";
@@ -241,7 +278,7 @@ export async function POST(request: Request) {
       return Response.json(
         {
           error:
-            "No se pudo conectar con la API. Configura las variables de entorno ZAI_BASE_URL y ZAI_API_KEY en Vercel.",
+            "No se pudo conectar con la API. Configura ZAI_BASE_URL+ZAI_API_KEY o ZAI_PROXY_URL en las variables de entorno de Vercel.",
         },
         { status: 500 }
       );
