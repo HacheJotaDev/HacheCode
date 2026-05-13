@@ -101,3 +101,26 @@ Stage Summary:
 - Server runs via .zscripts/dev.sh which keeps the process alive
 - Non-streaming API approach works reliably (maxDuration=300s)
 - Caddy proxy on port 81 successfully reaches Next.js on port 3000
+
+---
+Task ID: 6
+Agent: Main
+Task: Fix persistent 502/Failed to fetch errors and ensure server stability
+
+Work Log:
+- Verified server was running on port 3000 via dev.sh
+- Tested all request types through Caddy proxy on port 81
+- Simple greeting ("Hola") → 200 OK ✅
+- Calculator HTML ("Una calculadora en html básica") → 200 OK, 6888 chars ✅
+- Python age classifier → 200 OK, 635 chars ✅
+- Full calculator with CSS/JS → 200 OK, 5750 chars ✅
+- Server has been running for 24 minutes stable (PID 11295)
+- Created watchdog script (keep-alive.sh) that auto-restarts server if it goes down
+- Added health API endpoint at /api/health
+- Memory usage: 1.1GB RSS, 6.5GB available - healthy
+
+Stage Summary:
+- All chat functionality working through Caddy proxy
+- Server stable for 24+ minutes with multiple successful requests
+- Watchdog running to auto-restart server if it crashes
+- Non-streaming API with maxDuration=300s handles all response lengths
