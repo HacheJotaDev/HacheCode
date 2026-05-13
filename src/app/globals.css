@@ -89,42 +89,42 @@
 }
 
 .dark {
-  --background: oklch(0.115 0.005 265);
-  --foreground: oklch(0.93 0 0);
-  --card: oklch(0.155 0.006 265);
-  --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.155 0.006 265);
-  --popover-foreground: oklch(0.93 0 0);
+  --background: oklch(0.11 0.006 270);
+  --foreground: oklch(0.94 0.005 270);
+  --card: oklch(0.14 0.007 270);
+  --card-foreground: oklch(0.94 0.005 270);
+  --popover: oklch(0.14 0.007 270);
+  --popover-foreground: oklch(0.94 0.005 270);
   --primary: oklch(0.705 0.213 47.604);
-  --primary-foreground: oklch(0.115 0.005 265);
-  --secondary: oklch(0.2 0.007 265);
-  --secondary-foreground: oklch(0.93 0 0);
-  --muted: oklch(0.2 0.007 265);
-  --muted-foreground: oklch(0.58 0.01 265);
-  --accent: oklch(0.2 0.007 265);
-  --accent-foreground: oklch(0.93 0 0);
+  --primary-foreground: oklch(0.11 0.006 270);
+  --secondary: oklch(0.19 0.008 270);
+  --secondary-foreground: oklch(0.94 0.005 270);
+  --muted: oklch(0.19 0.008 270);
+  --muted-foreground: oklch(0.6 0.01 270);
+  --accent: oklch(0.19 0.008 270);
+  --accent-foreground: oklch(0.94 0.005 270);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 5%);
-  --input: oklch(1 0 0 / 7%);
+  --border: oklch(1 0 0 / 6%);
+  --input: oklch(1 0 0 / 8%);
   --ring: oklch(0.705 0.213 47.604);
   --chart-1: oklch(0.705 0.213 47.604);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.1 0.005 265);
-  --sidebar-foreground: oklch(0.93 0 0);
+  --sidebar: oklch(0.095 0.006 270);
+  --sidebar-foreground: oklch(0.94 0.005 270);
   --sidebar-primary: oklch(0.705 0.213 47.604);
-  --sidebar-primary-foreground: oklch(0.115 0.005 265);
-  --sidebar-accent: oklch(0.16 0.007 265);
-  --sidebar-accent-foreground: oklch(0.93 0 0);
-  --sidebar-border: oklch(1 0 0 / 5%);
+  --sidebar-primary-foreground: oklch(0.11 0.006 270);
+  --sidebar-accent: oklch(0.15 0.007 270);
+  --sidebar-accent-foreground: oklch(0.94 0.005 270);
+  --sidebar-border: oklch(1 0 0 / 6%);
   --sidebar-ring: oklch(0.705 0.213 47.604);
   --orange-accent: oklch(0.705 0.213 47.604);
   --orange-accent-foreground: oklch(1 0 0);
-  --surface: oklch(0.155 0.006 265);
-  --surface-hover: oklch(0.18 0.007 265);
-  --surface-active: oklch(0.21 0.008 265);
+  --surface: oklch(0.15 0.007 270);
+  --surface-hover: oklch(0.175 0.008 270);
+  --surface-active: oklch(0.2 0.009 270);
 }
 
 @layer base {
@@ -136,11 +136,11 @@
   }
 }
 
-/* Scrollbar minimalista */
+/* ── Scrollbar profesional ── */
 @layer base {
   ::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 5px;
+    height: 5px;
   }
 
   ::-webkit-scrollbar-track {
@@ -148,29 +148,44 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.4 0 0 / 15%);
+    background: oklch(0.4 0 0 / 12%);
     border-radius: 9999px;
   }
 
   .dark ::-webkit-scrollbar-thumb {
-    background: oklch(0.5 0 0 / 12%);
+    background: oklch(0.5 0 0 / 10%);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.5 0 0 / 30%);
+    background: oklch(0.5 0 0 / 25%);
   }
 
   .dark ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.6 0 0 / 20%);
+    background: oklch(0.6 0 0 / 18%);
   }
 }
 
-/* Glow sutil */
+/* ── Glow sutil ── */
 .glow-orange-sm {
-  box-shadow: 0 0 10px oklch(0.705 0.213 47.604 / 10%);
+  box-shadow: 0 0 12px oklch(0.705 0.213 47.604 / 12%);
 }
 
-/* Animación de puntos typing */
+.glow-orange-md {
+  box-shadow: 0 0 24px oklch(0.705 0.213 47.604 / 8%), 0 0 8px oklch(0.705 0.213 47.604 / 15%);
+}
+
+/* ── Glass morphism ── */
+.glass {
+  background: oklch(1 0 0 / 3%);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+
+.dark .glass {
+  background: oklch(0.14 0.007 270 / 60%);
+}
+
+/* ── Animación de puntos typing ── */
 @keyframes typing-bounce {
   0%,
   60%,
@@ -178,7 +193,7 @@
     transform: translateY(0);
   }
   30% {
-    transform: translateY(-4px);
+    transform: translateY(-5px);
   }
 }
 
@@ -192,7 +207,7 @@
   animation: typing-bounce 1.4s ease-in-out infinite 0.4s;
 }
 
-/* Animación del meter */
+/* ── Animación del meter ── */
 @keyframes meter-flow {
   0% {
     background-position: 0% 50%;
@@ -207,12 +222,48 @@
   animation: meter-flow 2s linear infinite;
 }
 
-/* Markdown estilos */
+/* ── Shimmer efecto ── */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.705 0.213 47.604 / 5%) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* ── Pulse suave ── */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* ── Markdown estilos ── */
 .markdown-content h1 {
   font-size: 1.375rem;
   font-weight: 700;
   margin-top: 1.25rem;
   margin-bottom: 0.625rem;
+  letter-spacing: -0.01em;
 }
 
 .markdown-content h2 {
@@ -220,6 +271,7 @@
   font-weight: 600;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
+  letter-spacing: -0.005em;
 }
 
 .markdown-content h3 {
@@ -231,7 +283,7 @@
 
 .markdown-content p {
   margin-bottom: 0.625rem;
-  line-height: 1.7;
+  line-height: 1.75;
 }
 
 .markdown-content ul,
@@ -250,7 +302,7 @@
 
 .markdown-content li {
   margin-bottom: 0.2rem;
-  line-height: 1.7;
+  line-height: 1.75;
 }
 
 .markdown-content blockquote {
@@ -266,6 +318,7 @@
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-color: oklch(0.705 0.213 47.604 / 25%);
+  transition: color 0.15s ease;
 }
 
 .markdown-content a:hover {
@@ -286,11 +339,43 @@
 }
 
 .markdown-content th {
-  background: oklch(0.16 0.007 265);
+  background: oklch(0.16 0.007 270);
   font-weight: 600;
 }
 
 .markdown-content hr {
   border-color: oklch(1 0 0 / 6%);
   margin: 0.875rem 0;
+}
+
+/* ── Chat input glow focus ── */
+.input-glow:focus-within {
+  box-shadow: 0 0 0 1px oklch(0.705 0.213 47.604 / 20%), 0 0 20px oklch(0.705 0.213 47.604 / 5%);
+}
+
+/* ── Smooth scrollbar area ── */
+.scroll-smooth-area {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Animated gradient border ── */
+@keyframes gradient-rotate {
+  0% {
+    --gradient-angle: 0deg;
+  }
+  100% {
+    --gradient-angle: 360deg;
+  }
+}
+
+@property --gradient-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.gradient-border-animated {
+  background: linear-gradient(var(--gradient-angle), oklch(0.705 0.213 47.604), oklch(0.6 0.2 30), oklch(0.705 0.213 47.604));
+  animation: gradient-rotate 3s linear infinite;
 }

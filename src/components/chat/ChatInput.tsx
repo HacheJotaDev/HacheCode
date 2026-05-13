@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Sparkles,
   Loader2,
+  Paperclip,
 } from "lucide-react";
 import { useChatStore, MODELS } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
@@ -23,36 +24,39 @@ function ModelSelector() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 px-2 text-[11px] rounded-md text-muted-foreground/60 hover:text-foreground border border-border/40 hover:border-border/60 transition-all shrink-0"
+        <button
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-muted-foreground/60 hover:text-foreground transition-all duration-200 hover:bg-surface-hover/60 shrink-0 border border-transparent hover:border-border/30"
         >
-          <Sparkles className="h-3 w-3 text-orange-accent" />
-          <span className="font-medium">{currentModel.name}</span>
+          <Sparkles className="h-3 w-3 text-orange-accent/70" />
+          <span>{currentModel.name}</span>
           <ChevronDown className="h-2.5 w-2.5 opacity-40" />
-        </Button>
+        </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-56 p-1 bg-popover border-border/50 rounded-xl shadow-xl"
+        className="w-60 p-1.5 bg-popover/95 backdrop-blur-xl border-border/30 rounded-xl shadow-2xl shadow-black/10"
         align="start"
-        sideOffset={6}
+        sideOffset={8}
       >
         <div className="space-y-0.5">
           {MODELS.map((model) => (
             <button
               key={model.id}
               onClick={() => setSelectedModel(model.id)}
-              className={`flex flex-col w-full px-3 py-1.5 rounded-lg text-left transition-all duration-150
+              className={`flex flex-col w-full px-3 py-2 rounded-lg text-left transition-all duration-150
                 ${
                   selectedModel === model.id
-                    ? "bg-orange-accent/8 text-orange-accent"
+                    ? "bg-orange-accent/8 text-orange-accent ring-1 ring-orange-accent/10"
                     : "text-foreground hover:bg-surface-hover"
                 }
               `}
             >
-              <span className="text-xs font-medium">{model.name}</span>
-              <span className="text-[10px] text-muted-foreground/50">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium">{model.name}</span>
+                {selectedModel === model.id && (
+                  <div className="h-1 w-1 rounded-full bg-orange-accent" />
+                )}
+              </div>
+              <span className="text-[10px] text-muted-foreground/50 mt-0.5">
                 {model.description}
               </span>
             </button>
@@ -95,12 +99,12 @@ export function ChatInput() {
   }, [input]);
 
   return (
-    <div className="border-t border-border/30 bg-background/90 backdrop-blur-md">
-      <div className="flex items-center gap-2 px-4 py-2.5 max-w-4xl mx-auto w-full">
-        <div className="flex-1 flex items-center gap-2 bg-surface border border-border/40 rounded-xl px-3 py-1 focus-within:ring-2 focus-within:ring-orange-accent/15 focus-within:border-orange-accent/25 transition-all">
+    <div className="border-t border-border/15 bg-background/80 backdrop-blur-xl">
+      <div className="flex items-center gap-2 px-5 py-3 max-w-4xl mx-auto w-full">
+        <div className="flex-1 flex items-center gap-2 bg-surface/70 border border-border/30 rounded-2xl px-3.5 py-1.5 input-glow transition-all duration-300 focus-within:border-orange-accent/20 focus-within:bg-surface/90">
           <ModelSelector />
 
-          <div className="h-4 w-px bg-border/30 shrink-0" />
+          <div className="h-4 w-px bg-border/20 shrink-0" />
 
           <textarea
             ref={textareaRef}
@@ -110,30 +114,30 @@ export function ChatInput() {
             placeholder="Escribe tu mensaje..."
             rows={1}
             disabled={isStreaming}
-            className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none disabled:opacity-50 transition-all font-mono leading-relaxed py-1 min-w-0"
+            className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/25 focus:outline-none disabled:opacity-50 transition-all font-mono leading-relaxed py-1 min-w-0"
             style={{ minHeight: "22px", maxHeight: "120px" }}
           />
 
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+          <motion.div whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}>
             <Button
               size="icon"
               onClick={handleSend}
               disabled={!input.trim() || isStreaming}
-              className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-accent to-orange-600 hover:from-orange-accent/90 hover:to-orange-600/90 text-white shadow-md shadow-orange-accent/10 disabled:opacity-30 disabled:shadow-none transition-all shrink-0"
+              className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-accent to-orange-600 hover:from-orange-accent/90 hover:to-orange-600/90 text-white shadow-lg shadow-orange-accent/15 disabled:opacity-25 disabled:shadow-none transition-all duration-200 shrink-0"
             >
               {isStreaming ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Send className="h-3 w-3" />
+                <Send className="h-3.5 w-3.5" />
               )}
             </Button>
           </motion.div>
         </div>
       </div>
 
-      <div className="flex items-center justify-center px-4 pb-1.5">
-        <p className="text-[10px] text-muted-foreground/25">
-          Enter para enviar · Shift+Enter nueva línea
+      <div className="flex items-center justify-center px-5 pb-2">
+        <p className="text-[10px] text-muted-foreground/20 font-mono">
+          Enter enviar · Shift+Enter nueva línea
         </p>
       </div>
     </div>

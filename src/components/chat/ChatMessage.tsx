@@ -12,15 +12,16 @@ import { useChatStore } from "@/store/chat-store";
 import type { ChatMessage as ChatMessageType } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 
-const markdownComponents = {
-  code({ className, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: unknown }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const markdownComponents: Record<string, any> = {
+  code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
     const match = /language-(\w+)/.exec(className || "");
     const codeString = String(children).replace(/\n$/, "");
     if (match) {
       return <CodeBlock language={match[1]} code={codeString} />;
     }
     return (
-      <code className="px-1.5 py-0.5 rounded-md bg-surface text-orange-accent/80 text-[13px] font-mono border border-border/25" {...props}>
+      <code className="px-1.5 py-0.5 rounded-md bg-surface text-orange-accent/80 text-[13px] font-mono border border-border/20" {...props}>
         {children}
       </code>
     );
@@ -53,11 +54,11 @@ const markdownComponents = {
     return <h3 className="text-sm font-semibold mt-3 mb-1.5 text-foreground">{children}</h3>;
   },
   blockquote({ children }: { children?: React.ReactNode }) {
-    return <blockquote className="border-l-2 border-orange-accent/30 pl-3 my-2.5 text-muted-foreground/70">{children}</blockquote>;
+    return <blockquote className="border-l-2 border-orange-accent/25 pl-3 my-2.5 text-muted-foreground/60">{children}</blockquote>;
   },
   a({ href, children }: { href?: string; children?: React.ReactNode }) {
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className="text-orange-accent hover:text-orange-accent/80 underline underline-offset-2 decoration-orange-accent/30">
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-orange-accent hover:text-orange-accent/80 underline underline-offset-2 decoration-orange-accent/25 transition-colors duration-150">
         {children}
       </a>
     );
@@ -76,24 +77,24 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 6 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, delay: Math.min(index * 0.03, 0.15), ease: "easeOut" }}
-      className="flex gap-3 px-4 py-2.5"
+      transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.15), ease: [0.25, 0.46, 0.45, 0.94] }}
+      className="flex gap-3.5 px-5 py-3"
     >
       {/* Avatar */}
       <div className="shrink-0 mt-0.5">
         {isUser ? (
-          <div className="h-7 w-7 rounded-lg bg-surface-hover border border-border/30 flex items-center justify-center">
-            <User className="h-3.5 w-3.5 text-muted-foreground/50" />
+          <div className="h-8 w-8 rounded-xl bg-surface-hover/80 border border-border/20 flex items-center justify-center">
+            <User className="h-4 w-4 text-muted-foreground/40" />
           </div>
         ) : isWelcome ? (
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-accent to-orange-600 flex items-center justify-center glow-orange-sm">
-            <Sparkles className="h-3.5 w-3.5 text-white" />
+          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-accent to-orange-600 flex items-center justify-center glow-orange-md shadow-lg shadow-orange-accent/10">
+            <Sparkles className="h-4 w-4 text-white" />
           </div>
         ) : (
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-accent/80 to-orange-600/80 flex items-center justify-center">
-            <Bot className="h-3.5 w-3.5 text-white" />
+          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-accent/80 to-orange-600/80 flex items-center justify-center shadow-sm shadow-orange-accent/10">
+            <Bot className="h-4 w-4 text-white" />
           </div>
         )}
       </div>
@@ -101,12 +102,12 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
       {/* Contenido */}
       <div className="flex-1 min-w-0">
         {/* Nombre */}
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[11px] font-semibold text-foreground/70">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[11px] font-semibold text-foreground/60 tracking-wide">
             {isUser ? "Tú" : "Hache Code"}
           </span>
           {!isUser && !isWelcome && !isError && (
-            <span className="text-[10px] text-muted-foreground/25">
+            <span className="text-[10px] text-muted-foreground/20 font-mono">
               {new Date(message.timestamp).toLocaleTimeString("es-ES", {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -117,7 +118,7 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
 
         {/* Herramientas */}
         {message.toolUses && message.toolUses.length > 0 && (
-          <div className="mb-2">
+          <div className="mb-2.5">
             {message.toolUses.map((tool, i) => (
               <ToolCallBlock key={i} tool={tool} />
             ))}
@@ -126,12 +127,12 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
 
         {/* Mensaje de error */}
         {isError && (
-          <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5 mb-2">
-            <div className="flex items-start gap-2">
+          <div className="rounded-xl border border-red-500/15 bg-red-500/4 px-4 py-3 mb-2">
+            <div className="flex items-start gap-2.5">
               <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-red-400/90 font-medium mb-0.5">Error</p>
-                <p className="text-xs text-red-400/70 leading-relaxed">{message.content}</p>
+                <p className="text-xs text-red-400/90 font-semibold mb-0.5">Error</p>
+                <p className="text-xs text-red-400/60 leading-relaxed">{message.content}</p>
               </div>
               <RetryButton />
             </div>
@@ -151,7 +152,7 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
                 {message.content}
               </ReactMarkdown>
             </div>
-            <span className="inline-block h-4 w-0.5 bg-orange-accent animate-pulse ml-0.5 align-text-bottom" />
+            <span className="inline-block h-4 w-0.5 bg-orange-accent animate-pulse ml-0.5 align-text-bottom rounded-full" />
           </div>
         ) : !isError && isUser ? (
           <div className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap">
@@ -186,7 +187,7 @@ function RetryButton() {
     <Button
       variant="ghost"
       size="icon"
-      className="h-6 w-6 rounded-md text-red-400/50 hover:text-red-400 hover:bg-red-400/10 shrink-0"
+      className="h-7 w-7 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-400/8 shrink-0 transition-all duration-200"
       onClick={handleRetry}
       disabled={isStreaming}
     >
