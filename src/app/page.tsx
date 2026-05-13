@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PanelRight, Sparkles, Code2 } from "lucide-react";
+import { PanelRight } from "lucide-react";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -33,24 +33,17 @@ export default function HomePage() {
         <Sidebar />
 
         <div className="flex-1 flex flex-col min-w-0 relative">
-          {/* Barra superior - Glass morphism */}
+          {/* Barra superior */}
           <div className="flex items-center justify-between px-5 py-2.5 border-b border-border/20 glass shrink-0 z-10">
             <div className="flex items-center gap-3">
-              <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-orange-accent to-orange-600 flex items-center justify-center shadow-sm shadow-orange-accent/20">
-                <Sparkles className="h-3.5 w-3.5 text-white" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-foreground/90 tracking-tight">
-                  Hache Code
-                </span>
-                <div className="h-3 w-px bg-border/40" />
-                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface/80 border border-border/20">
-                  <Code2 className="h-2.5 w-2.5 text-muted-foreground/40" />
-                  <span className="text-[10px] text-muted-foreground/50 font-mono">
-                    ~/proyecto
-                  </span>
-                </div>
-              </div>
+              <img
+                src="/logo-hache-ia.png"
+                alt="Hache IA"
+                className="h-6 w-6 rounded-lg object-cover"
+              />
+              <span className="text-sm font-bold text-foreground/90 tracking-tight">
+                Hache IA
+              </span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -119,7 +112,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Input - Full width horizontal bar */}
+          {/* Input */}
           <ChatInput />
         </div>
 

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -71,7 +72,7 @@ const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now(
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content: `Hola, soy **Hache Code**, tu asistente de programación con IA.
+  content: `Hola, soy **Hache IA**, tu asistente de programación con IA.
 
 Puedo ayudarte con:
 
@@ -91,238 +92,252 @@ Prueba preguntarme algo como:
   timestamp: Date.now(),
 };
 
-export const useChatStore = create<ChatState>((set, get) => ({
-  messages: [WELCOME_MESSAGE],
-  selectedModel: "glm-4-plus",
-  isStreaming: false,
-  sessionContext: {
-    files: [],
-    totalTokens: 0,
-    maxTokens: 200000,
-  },
-  sidebarOpen: true,
-  contextPanelOpen: false,
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set, get) => ({
+      messages: [WELCOME_MESSAGE],
+      selectedModel: "glm-4-plus",
+      isStreaming: false,
+      sessionContext: {
+        files: [],
+        totalTokens: 0,
+        maxTokens: 200000,
+      },
+      sidebarOpen: true,
+      contextPanelOpen: false,
 
-  addMessage: (message) => {
-    const newMessage: ChatMessage = {
-      ...message,
-      id: generateId(),
-      timestamp: Date.now(),
-    };
-    set((state) => ({ messages: [...state.messages, newMessage] }));
-  },
+      addMessage: (message) => {
+        const newMessage: ChatMessage = {
+          ...message,
+          id: generateId(),
+          timestamp: Date.now(),
+        };
+        set((state) => ({ messages: [...state.messages, newMessage] }));
+      },
 
-  updateLastMessage: (content) => {
-    set((state) => {
-      const messages = [...state.messages];
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg) {
-        messages[messages.length - 1] = { ...lastMsg, content };
-      }
-      return { messages };
-    });
-  },
+      updateLastMessage: (content) => {
+        set((state) => {
+          const messages = [...state.messages];
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg) {
+            messages[messages.length - 1] = { ...lastMsg, content };
+          }
+          return { messages };
+        });
+      },
 
-  sendMessage: async (content: string) => {
-    const { messages, selectedModel, addMessage, setIsStreaming } = get();
+      sendMessage: async (content: string) => {
+        const { messages, selectedModel, addMessage, setIsStreaming } = get();
 
-    addMessage({ role: "user", content });
-    addMessage({ role: "assistant", content: "", isStreaming: true });
-    setIsStreaming(true);
+        addMessage({ role: "user", content });
+        addMessage({ role: "assistant", content: "", isStreaming: true });
+        setIsStreaming(true);
 
-    try {
-      const apiMessages = messages
-        .filter((m) => m.id !== "welcome" && m.role !== "system")
-        .map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        }));
+        try {
+          const apiMessages = messages
+            .filter((m) => m.id !== "welcome" && m.role !== "system")
+            .map((m) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+            }));
 
-      apiMessages.push({ role: "user", content });
+          apiMessages.push({ role: "user", content });
 
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: apiMessages,
-          model: selectedModel,
-        }),
-      });
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: apiMessages,
+              model: selectedModel,
+            }),
+          });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `Error del servidor (${response.status})` }));
-        throw new Error(errorData.error || `Error del servidor (${response.status})`);
-      }
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `Error del servidor (${response.status})` }));
+            throw new Error(errorData.error || `Error del servidor (${response.status})`);
+          }
 
-      const contentType = response.headers.get("content-type") || "";
+          const contentType = response.headers.get("content-type") || "";
 
-      // Handle SSE streaming response
-      if (contentType.includes("text/event-stream") && response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullContent = "";
-        let buffer = "";
-        let usageData: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
+          // Handle SSE streaming response
+          if (contentType.includes("text/event-stream") && response.body) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullContent = "";
+            let buffer = "";
+            let usageData: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split("\n\n");
-          buffer = parts.pop() || "";
+              buffer += decoder.decode(value, { stream: true });
+              const parts = buffer.split("\n\n");
+              buffer = parts.pop() || "";
 
-          for (const part of parts) {
-            const trimmed = part.trim();
-            if (!trimmed) continue;
+              for (const part of parts) {
+                const trimmed = part.trim();
+                if (!trimmed) continue;
 
-            const lines = trimmed.split("\n");
-            for (const line of lines) {
-              const lineTrimmed = line.trim();
-              if (!lineTrimmed.startsWith("data: ")) continue;
+                const lines = trimmed.split("\n");
+                for (const line of lines) {
+                  const lineTrimmed = line.trim();
+                  if (!lineTrimmed.startsWith("data: ")) continue;
 
-              const dataStr = lineTrimmed.slice(6);
-              if (dataStr === "[DONE]") continue;
+                  const dataStr = lineTrimmed.slice(6);
+                  if (dataStr === "[DONE]") continue;
 
-              try {
-                const parsed = JSON.parse(dataStr);
+                  try {
+                    const parsed = JSON.parse(dataStr);
 
-                if (parsed.type === "delta" && parsed.content) {
-                  fullContent += parsed.content;
-                  set((state) => {
-                    const msgs = [...state.messages];
-                    const lastIdx = msgs.length - 1;
-                    if (msgs[lastIdx]?.role === "assistant") {
-                      msgs[lastIdx] = {
-                        ...msgs[lastIdx],
-                        content: fullContent,
-                      };
+                    if (parsed.type === "delta" && parsed.content) {
+                      fullContent += parsed.content;
+                      set((state) => {
+                        const msgs = [...state.messages];
+                        const lastIdx = msgs.length - 1;
+                        if (msgs[lastIdx]?.role === "assistant") {
+                          msgs[lastIdx] = {
+                            ...msgs[lastIdx],
+                            content: fullContent,
+                          };
+                        }
+                        return { messages: msgs };
+                      });
+                    } else if (parsed.type === "done") {
+                      if (parsed.usage) {
+                        usageData = parsed.usage;
+                      }
+                    } else if (parsed.type === "error") {
+                      throw new Error(parsed.error || "Error en el stream");
                     }
-                    return { messages: msgs };
-                  });
-                } else if (parsed.type === "done") {
-                  if (parsed.usage) {
-                    usageData = parsed.usage;
+                  } catch (e) {
+                    if (e instanceof Error && e.message !== "Error en el stream") {
+                      // Skip malformed JSON
+                    } else {
+                      throw e;
+                    }
                   }
-                } else if (parsed.type === "error") {
-                  throw new Error(parsed.error || "Error en el stream");
-                }
-              } catch (e) {
-                if (e instanceof Error && e.message !== "Error en el stream") {
-                  // Skip malformed JSON
-                } else {
-                  throw e;
                 }
               }
             }
+
+            // Final update
+            const toolUses = parseToolUses(fullContent);
+            set((state) => {
+              const msgs = [...state.messages];
+              const lastIdx = msgs.length - 1;
+              if (msgs[lastIdx]?.role === "assistant") {
+                msgs[lastIdx] = {
+                  ...msgs[lastIdx],
+                  content: fullContent || "No pude generar una respuesta.",
+                  isStreaming: false,
+                  isError: false,
+                  toolUses: toolUses.length > 0 ? toolUses : undefined,
+                };
+              }
+              return {
+                messages: msgs,
+                isStreaming: false,
+                sessionContext: {
+                  ...state.sessionContext,
+                  totalTokens: usageData
+                    ? usageData.totalTokens
+                    : state.sessionContext.totalTokens + Math.ceil(fullContent.length / 4),
+                },
+              };
+            });
+          } else {
+            // Handle JSON response (non-streaming)
+            const data = await response.json();
+            const parsedContent = data.content || "No pude generar una respuesta.";
+            const toolUses = parseToolUses(parsedContent);
+
+            set((state) => {
+              const msgs = [...state.messages];
+              const lastIdx = msgs.length - 1;
+              if (msgs[lastIdx]?.role === "assistant") {
+                msgs[lastIdx] = {
+                  ...msgs[lastIdx],
+                  content: parsedContent,
+                  isStreaming: false,
+                  isError: false,
+                  toolUses: toolUses.length > 0 ? toolUses : undefined,
+                };
+              }
+              return {
+                messages: msgs,
+                isStreaming: false,
+                sessionContext: {
+                  ...state.sessionContext,
+                  totalTokens: data.usage
+                    ? data.usage.totalTokens
+                    : state.sessionContext.totalTokens + Math.ceil(parsedContent.length / 4),
+                },
+              };
+            });
           }
+        } catch (error) {
+          const errorMsg =
+            error instanceof Error
+              ? error.name === "AbortError"
+                ? "La solicitud tardó demasiado. Intenta de nuevo."
+                : error.message
+              : "Ocurrió un error inesperado";
+
+          set((state) => {
+            const msgs = [...state.messages];
+            const lastIdx = msgs.length - 1;
+            if (msgs[lastIdx]?.role === "assistant") {
+              msgs[lastIdx] = {
+                ...msgs[lastIdx],
+                content: `Error: ${errorMsg}`,
+                isStreaming: false,
+                isError: true,
+              };
+            }
+            return { messages: msgs, isStreaming: false };
+          });
         }
+      },
 
-        // Final update
-        const toolUses = parseToolUses(fullContent);
-        set((state) => {
-          const msgs = [...state.messages];
-          const lastIdx = msgs.length - 1;
-          if (msgs[lastIdx]?.role === "assistant") {
-            msgs[lastIdx] = {
-              ...msgs[lastIdx],
-              content: fullContent || "No pude generar una respuesta.",
-              isStreaming: false,
-              isError: false,
-              toolUses: toolUses.length > 0 ? toolUses : undefined,
-            };
-          }
-          return {
-            messages: msgs,
-            isStreaming: false,
-            sessionContext: {
-              ...state.sessionContext,
-              totalTokens: usageData
-                ? usageData.totalTokens
-                : state.sessionContext.totalTokens + Math.ceil(fullContent.length / 4),
-            },
-          };
-        });
-      } else {
-        // Handle JSON response (non-streaming)
-        const data = await response.json();
-        const parsedContent = data.content || "No pude generar una respuesta.";
-        const toolUses = parseToolUses(parsedContent);
-
-        set((state) => {
-          const msgs = [...state.messages];
-          const lastIdx = msgs.length - 1;
-          if (msgs[lastIdx]?.role === "assistant") {
-            msgs[lastIdx] = {
-              ...msgs[lastIdx],
-              content: parsedContent,
-              isStreaming: false,
-              isError: false,
-              toolUses: toolUses.length > 0 ? toolUses : undefined,
-            };
-          }
-          return {
-            messages: msgs,
-            isStreaming: false,
-            sessionContext: {
-              ...state.sessionContext,
-              totalTokens: data.usage
-                ? data.usage.totalTokens
-                : state.sessionContext.totalTokens + Math.ceil(parsedContent.length / 4),
-            },
-          };
-        });
-      }
-    } catch (error) {
-      const errorMsg =
-        error instanceof Error
-          ? error.name === "AbortError"
-            ? "La solicitud tardó demasiado. Intenta de nuevo."
-            : error.message
-          : "Ocurrió un error inesperado";
-
-      set((state) => {
-        const msgs = [...state.messages];
-        const lastIdx = msgs.length - 1;
-        if (msgs[lastIdx]?.role === "assistant") {
-          msgs[lastIdx] = {
-            ...msgs[lastIdx],
-            content: `Error: ${errorMsg}`,
-            isStreaming: false,
-            isError: true,
-          };
-        }
-        return { messages: msgs, isStreaming: false };
-      });
+      setSelectedModel: (model) => set({ selectedModel: model }),
+      setIsStreaming: (streaming) => set({ isStreaming: streaming }),
+      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      toggleContextPanel: () => set((state) => ({ contextPanelOpen: !state.contextPanelOpen })),
+      addContextFile: (file) =>
+        set((state) => ({
+          sessionContext: {
+            ...state.sessionContext,
+            files: state.sessionContext.files.includes(file)
+              ? state.sessionContext.files
+              : [...state.sessionContext.files, file],
+          },
+        })),
+      removeContextFile: (file) =>
+        set((state) => ({
+          sessionContext: {
+            ...state.sessionContext,
+            files: state.sessionContext.files.filter((f) => f !== file),
+          },
+        })),
+      updateTokenUsage: (tokens) =>
+        set((state) => ({
+          sessionContext: { ...state.sessionContext, totalTokens: tokens },
+        })),
+      clearChat: () => set({ messages: [WELCOME_MESSAGE], sessionContext: { ...get().sessionContext, totalTokens: 0 } }),
+    }),
+    {
+      name: "hache-ia-chat",
+      partialize: (state) => ({
+        messages: state.messages.map((m) => ({
+          ...m,
+          isStreaming: false, // Always reset streaming on load
+        })),
+        selectedModel: state.selectedModel,
+      }),
     }
-  },
-
-  setSelectedModel: (model) => set({ selectedModel: model }),
-  setIsStreaming: (streaming) => set({ isStreaming: streaming }),
-  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-  toggleContextPanel: () => set((state) => ({ contextPanelOpen: !state.contextPanelOpen })),
-  addContextFile: (file) =>
-    set((state) => ({
-      sessionContext: {
-        ...state.sessionContext,
-        files: state.sessionContext.files.includes(file)
-          ? state.sessionContext.files
-          : [...state.sessionContext.files, file],
-      },
-    })),
-  removeContextFile: (file) =>
-    set((state) => ({
-      sessionContext: {
-        ...state.sessionContext,
-        files: state.sessionContext.files.filter((f) => f !== file),
-      },
-    })),
-  updateTokenUsage: (tokens) =>
-    set((state) => ({
-      sessionContext: { ...state.sessionContext, totalTokens: tokens },
-    })),
-  clearChat: () => set({ messages: [WELCOME_MESSAGE], sessionContext: { ...get().sessionContext, totalTokens: 0 } }),
-}));
+  )
+);
 
 function parseToolUses(content: string): ToolUse[] {
   const tools: ToolUse[] = [];

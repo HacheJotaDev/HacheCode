@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-const SYSTEM_PROMPT = `Eres Hache Code, un asistente de programación agéntico avanzado. Ayudas a desarrolladores a escribir, depurar y entender código.
+const SYSTEM_PROMPT = `Eres Hache IA, un asistente de programación agéntico avanzado. Ayudas a desarrolladores a escribir, depurar y entender código.
 
 Comportamientos clave:
 - Responde en ESPAÑOL siempre
@@ -239,9 +239,11 @@ async function handleWithZaiProxy(
 
   console.log("[Chat] Proxying to:", url);
 
-  // Use non-streaming mode for the proxy request to avoid tunnel timeouts.
-  // The proxy server on the codespace calls Z.ai API and returns the complete response.
-  // We then stream it to the client in SSE format.
+  // Send with stream: true so the proxy server streams SSE back to us.
+  // The proxy server (codespace Next.js) responds with our custom SSE format:
+  //   data: {"type":"delta","content":"..."}
+  //   data: {"type":"done","content":"...","usage":{...},"model":"..."}
+  //   data: [DONE]
   const upstreamResponse = await fetch(url, {
     method: "POST",
     headers: {
@@ -250,7 +252,7 @@ async function handleWithZaiProxy(
     body: JSON.stringify({
       messages: apiMessages,
       model,
-      stream: false, // Non-streaming to avoid tunnel timeouts
+      stream: true, // Enable streaming from proxy
     }),
   });
 
@@ -261,37 +263,7 @@ async function handleWithZaiProxy(
 
   const contentType = upstreamResponse.headers.get("content-type") || "";
 
-  // If JSON response (non-streaming from proxy - this is the expected path)
-  if (contentType.includes("application/json")) {
-    const data = await upstreamResponse.json();
-    const content = data.choices?.[0]?.message?.content || data.content || "";
-
-    if (!content) {
-      throw new Error("Proxy: respuesta vacía");
-    }
-
-    const usage = data.usage;
-    const promptTokens = usage?.prompt_tokens || 0;
-    const completionTokens = usage?.completion_tokens || 0;
-    const responseModel = data.model || model;
-
-    // Stream the complete response to the client in SSE format
-    // Split into chunks for a more natural typing effect
-    return createSSEStream(async (controller, encoder) => {
-      // Split content into chunks of ~20 chars for typing effect
-      const chunks = content.match(/.{1,20}|.+$/g) || [content];
-      for (const chunk of chunks) {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: "delta", content: chunk })}\n\n`
-          )
-        );
-      }
-      sendSSEDone(controller, encoder, content, responseModel, promptTokens, completionTokens);
-    });
-  }
-
-  // If SSE response (streaming from proxy - fallback)
+  // If SSE response (streaming from proxy - expected path with stream: true)
   if (contentType.includes("text/event-stream") && upstreamResponse.body) {
     return createSSEStream(async (controller, encoder) => {
       const reader = upstreamResponse.body!.getReader();
@@ -346,6 +318,34 @@ async function handleWithZaiProxy(
           controller.close();
         }
       }
+    });
+  }
+
+  // If JSON response (non-streaming fallback from proxy)
+  if (contentType.includes("application/json")) {
+    const data = await upstreamResponse.json();
+    const content = data.choices?.[0]?.message?.content || data.content || "";
+
+    if (!content) {
+      throw new Error("Proxy: respuesta vacía");
+    }
+
+    const usage = data.usage;
+    const promptTokens = usage?.prompt_tokens || 0;
+    const completionTokens = usage?.completion_tokens || 0;
+    const responseModel = data.model || model;
+
+    // Stream the complete response to the client in SSE format
+    return createSSEStream(async (controller, encoder) => {
+      const chunks = content.match(/.{1,20}|.+$/g) || [content];
+      for (const chunk of chunks) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "delta", content: chunk })}\n\n`
+          )
+        );
+      }
+      sendSSEDone(controller, encoder, content, responseModel, promptTokens, completionTokens);
     });
   }
 

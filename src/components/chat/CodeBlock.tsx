@@ -11,6 +11,7 @@ interface CodeBlockProps {
   language: string;
   code: string;
   filename?: string;
+  showCopyButton?: boolean;
 }
 
 const LANG_MAP: Record<string, string> = {
@@ -48,7 +49,7 @@ function getLanguage(lang: string): string {
   return LANG_MAP[lower] || lower;
 }
 
-export function CodeBlock({ language, code, filename }: CodeBlockProps) {
+export function CodeBlock({ language, code, filename, showCopyButton = true }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const lang = getLanguage(language);
 
@@ -79,36 +80,38 @@ export function CodeBlock({ language, code, filename }: CodeBlockProps) {
             {filename || lang}
           </span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 rounded-md text-muted-foreground/30 hover:text-foreground"
-          onClick={handleCopy}
-        >
-          <AnimatePresence mode="wait">
-            {copied ? (
-              <motion.div
-                key="check"
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.5, opacity: 0 }}
-                transition={{ duration: 0.12 }}
-              >
-                <Check className="h-3 w-3 text-emerald-400" />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="copy"
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.5, opacity: 0 }}
-                transition={{ duration: 0.12 }}
-              >
-                <Copy className="h-3 w-3" />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Button>
+        {showCopyButton && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 rounded-md text-muted-foreground/30 hover:text-foreground"
+            onClick={handleCopy}
+          >
+            <AnimatePresence mode="wait">
+              {copied ? (
+                <motion.div
+                  key="check"
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ duration: 0.12 }}
+                >
+                  <Check className="h-3 w-3 text-emerald-400" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="copy"
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ duration: 0.12 }}
+                >
+                  <Copy className="h-3 w-3" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </Button>
+        )}
       </div>
 
       {/* Código */}

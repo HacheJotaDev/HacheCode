@@ -15,15 +15,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hache Code — Asistente IA de Codigo",
-  description: "Asistente de programacion con IA en tu navegador. Escribe, depura y entiende codigo con Hache Code.",
-  keywords: ["Hache Code", "IA", "asistente codigo", "programacion", "TypeScript", "chat"],
+  title: "Hache IA — Tu Asistente Inteligente",
+  description: "Asistente de programacion con IA en tu navegador. Escribe, depura y entiende codigo con Hache IA.",
+  keywords: ["Hache IA", "IA", "asistente codigo", "programacion", "TypeScript", "chat"],
   authors: [{ name: "HacheJotaDev" }],
   icons: {
-    icon: "/logo.svg",
+    icon: "/favicon.png",
   },
   openGraph: {
-    title: "Hache Code — Asistente IA de Codigo",
+    title: "Hache IA — Tu Asistente Inteligente",
     description: "Asistente de programacion con IA en tu navegador.",
     type: "website",
   },

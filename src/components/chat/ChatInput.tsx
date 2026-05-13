@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Sparkles,
   Loader2,
-  Paperclip,
 } from "lucide-react";
 import { useChatStore, MODELS } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";

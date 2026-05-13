@@ -135,41 +135,6 @@ export function ContextPanel() {
                 )}
               </div>
             </div>
-
-            <Separator className="bg-border/8" />
-
-            {/* Stats */}
-            <div>
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/25 mb-3">
-                Resumen rápido
-              </h3>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="px-3 py-3 rounded-xl bg-surface/30 border border-border/8 text-center">
-                  <p className="text-lg font-bold text-orange-accent">
-                    {messages.length}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground/30 font-medium mt-0.5">Mensajes</p>
-                </div>
-                <div className="px-3 py-3 rounded-xl bg-surface/30 border border-border/8 text-center">
-                  <p className="text-lg font-bold text-orange-accent/70">
-                    {sessionContext.files.length}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground/30 font-medium mt-0.5">Archivos</p>
-                </div>
-                <div className="px-3 py-3 rounded-xl bg-surface/30 border border-border/8 text-center">
-                  <p className="text-lg font-bold text-emerald-400/80">
-                    {(sessionContext.totalTokens / 1000).toFixed(1)}k
-                  </p>
-                  <p className="text-[9px] text-muted-foreground/30 font-medium mt-0.5">Tokens</p>
-                </div>
-                <div className="px-3 py-3 rounded-xl bg-surface/30 border border-border/8 text-center">
-                  <p className="text-lg font-bold text-sky-400/80">
-                    {currentModel?.name.split(" ").pop() || "—"}
-                  </p>
-                  <p className="text-[9px] text-muted-foreground/30 font-medium mt-0.5">Modelo</p>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Cerrar */}

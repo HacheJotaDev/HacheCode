@@ -4,7 +4,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, User, Sparkles, AlertCircle, RotateCcw } from "lucide-react";
+import { User, Sparkles, AlertCircle, RotateCcw } from "lucide-react";
 import { CodeBlock } from "./CodeBlock";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { TypingIndicator } from "./TypingIndicator";
@@ -12,68 +12,75 @@ import { useChatStore } from "@/store/chat-store";
 import type { ChatMessage as ChatMessageType } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const markdownComponents: Record<string, any> = {
-  code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
-    const match = /language-(\w+)/.exec(className || "");
-    const codeString = String(children).replace(/\n$/, "");
-    if (match) {
-      return <CodeBlock language={match[1]} code={codeString} />;
-    }
-    return (
-      <code className="px-1.5 py-0.5 rounded-md bg-surface text-orange-accent/80 text-[13px] font-mono border border-border/20" {...props}>
-        {children}
-      </code>
-    );
-  },
-  pre({ children }: { children?: React.ReactNode }) {
-    return <>{children}</>;
-  },
-  p({ children }: { children?: React.ReactNode }) {
-    return <p className="mb-2.5 last:mb-0 leading-relaxed">{children}</p>;
-  },
-  ul({ children }: { children?: React.ReactNode }) {
-    return <ul className="mb-2.5 list-disc pl-5 space-y-1">{children}</ul>;
-  },
-  ol({ children }: { children?: React.ReactNode }) {
-    return <ol className="mb-2.5 list-decimal pl-5 space-y-1">{children}</ol>;
-  },
-  li({ children }: { children?: React.ReactNode }) {
-    return <li className="leading-relaxed">{children}</li>;
-  },
-  strong({ children }: { children?: React.ReactNode }) {
-    return <strong className="font-semibold text-foreground/90">{children}</strong>;
-  },
-  h1({ children }: { children?: React.ReactNode }) {
-    return <h1 className="text-lg font-bold mt-4 mb-2 text-foreground">{children}</h1>;
-  },
-  h2({ children }: { children?: React.ReactNode }) {
-    return <h2 className="text-base font-semibold mt-3.5 mb-1.5 text-foreground">{children}</h2>;
-  },
-  h3({ children }: { children?: React.ReactNode }) {
-    return <h3 className="text-sm font-semibold mt-3 mb-1.5 text-foreground">{children}</h3>;
-  },
-  blockquote({ children }: { children?: React.ReactNode }) {
-    return <blockquote className="border-l-2 border-orange-accent/25 pl-3 my-2.5 text-muted-foreground/60">{children}</blockquote>;
-  },
-  a({ href, children }: { href?: string; children?: React.ReactNode }) {
-    return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className="text-orange-accent hover:text-orange-accent/80 underline underline-offset-2 decoration-orange-accent/25 transition-colors duration-150">
-        {children}
-      </a>
-    );
-  },
-};
-
 interface ChatMessageProps {
   message: ChatMessageType;
   index: number;
+}
+
+// We need to create markdown components that have access to isStreaming
+function createMarkdownComponents(isStreaming: boolean) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const components: Record<string, any> = {
+    code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+      const match = /language-(\w+)/.exec(className || "");
+      const codeString = String(children).replace(/\n$/, "");
+      if (match) {
+        return <CodeBlock language={match[1]} code={codeString} showCopyButton={!isStreaming} />;
+      }
+      return (
+        <code className="px-1.5 py-0.5 rounded-md bg-surface text-orange-accent/80 text-[13px] font-mono border border-border/20" {...props}>
+          {children}
+        </code>
+      );
+    },
+    pre({ children }: { children?: React.ReactNode }) {
+      return <>{children}</>;
+    },
+    p({ children }: { children?: React.ReactNode }) {
+      return <p className="mb-2.5 last:mb-0 leading-relaxed">{children}</p>;
+    },
+    ul({ children }: { children?: React.ReactNode }) {
+      return <ul className="mb-2.5 list-disc pl-5 space-y-1">{children}</ul>;
+    },
+    ol({ children }: { children?: React.ReactNode }) {
+      return <ol className="mb-2.5 list-decimal pl-5 space-y-1">{children}</ol>;
+    },
+    li({ children }: { children?: React.ReactNode }) {
+      return <li className="leading-relaxed">{children}</li>;
+    },
+    strong({ children }: { children?: React.ReactNode }) {
+      return <strong className="font-semibold text-foreground/90">{children}</strong>;
+    },
+    h1({ children }: { children?: React.ReactNode }) {
+      return <h1 className="text-lg font-bold mt-4 mb-2 text-foreground">{children}</h1>;
+    },
+    h2({ children }: { children?: React.ReactNode }) {
+      return <h2 className="text-base font-semibold mt-3.5 mb-1.5 text-foreground">{children}</h2>;
+    },
+    h3({ children }: { children?: React.ReactNode }) {
+      return <h3 className="text-sm font-semibold mt-3 mb-1.5 text-foreground">{children}</h3>;
+    },
+    blockquote({ children }: { children?: React.ReactNode }) {
+      return <blockquote className="border-l-2 border-orange-accent/25 pl-3 my-2.5 text-muted-foreground/60">{children}</blockquote>;
+    },
+    a({ href, children }: { href?: string; children?: React.ReactNode }) {
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="text-orange-accent hover:text-orange-accent/80 underline underline-offset-2 decoration-orange-accent/25 transition-colors duration-150">
+          {children}
+        </a>
+      );
+    },
+  };
+  return components;
 }
 
 export function ChatMessage({ message, index }: ChatMessageProps) {
   const isUser = message.role === "user";
   const isWelcome = message.id === "welcome";
   const isError = message.isError;
+  const isStreaming = !!message.isStreaming;
+
+  const markdownComponents = createMarkdownComponents(isStreaming);
 
   return (
     <motion.div
@@ -88,14 +95,12 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
           <div className="h-8 w-8 rounded-xl bg-surface-hover/80 border border-border/20 flex items-center justify-center">
             <User className="h-4 w-4 text-muted-foreground/40" />
           </div>
-        ) : isWelcome ? (
-          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-accent to-orange-600 flex items-center justify-center glow-orange-md shadow-lg shadow-orange-accent/10">
-            <Sparkles className="h-4 w-4 text-white" />
-          </div>
         ) : (
-          <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-accent/80 to-orange-600/80 flex items-center justify-center shadow-sm shadow-orange-accent/10">
-            <Bot className="h-4 w-4 text-white" />
-          </div>
+          <img
+            src="/logo-hache-ia.png"
+            alt="Hache IA"
+            className="h-8 w-8 rounded-xl object-cover"
+          />
         )}
       </div>
 
@@ -104,7 +109,7 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
         {/* Nombre */}
         <div className="flex items-center gap-2 mb-1.5">
           <span className="text-[11px] font-semibold text-foreground/60 tracking-wide">
-            {isUser ? "Tú" : "Hache Code"}
+            {isUser ? "Tú" : "Hache IA"}
           </span>
           {!isUser && !isWelcome && !isError && (
             <span className="text-[10px] text-muted-foreground/20 font-mono">

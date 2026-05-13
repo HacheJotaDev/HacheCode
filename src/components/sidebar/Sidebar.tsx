@@ -5,14 +5,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
-  MessageSquare,
   Plus,
-  Sparkles,
   Moon,
   Sun,
   Trash2,
-  Code2,
-  Zap,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useChatStore } from "@/store/chat-store";
@@ -24,13 +20,10 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 
 export function Sidebar() {
-  const { sidebarOpen, toggleSidebar, clearChat, messages } = useChatStore();
+  const { sidebarOpen, toggleSidebar, clearChat } = useChatStore();
   const { theme, setTheme } = useTheme();
-  const userMessages = messages.filter((m) => m.role === "user").length;
-  const aiMessages = messages.filter((m) => m.role === "assistant").length;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -47,15 +40,17 @@ export function Sidebar() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-4">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-accent to-orange-600 flex items-center justify-center shadow-md shadow-orange-accent/15 glow-orange-sm">
-                  <Sparkles className="h-4 w-4 text-white" />
-                </div>
+                <img
+                  src="/logo-hache-ia.png"
+                  alt="Hache IA"
+                  className="h-8 w-8 rounded-xl object-cover"
+                />
                 <div>
                   <h1 className="text-sm font-bold text-foreground tracking-tight">
-                    Hache Code
+                    Hache IA
                   </h1>
                   <p className="text-[10px] text-muted-foreground/40 font-medium">
-                    Asistente IA de Codigo
+                    Tu Asistente Inteligente
                   </p>
                 </div>
               </div>
@@ -86,49 +81,6 @@ export function Sidebar() {
                 <Plus className="h-3.5 w-3.5" />
                 Nueva sesión
               </Button>
-            </div>
-
-            {/* Sesión activa */}
-            <div className="px-3 py-1">
-              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-orange-accent/4 border border-orange-accent/8 transition-all duration-200 hover:bg-orange-accent/6">
-                <div className="h-7 w-7 rounded-lg bg-orange-accent/8 flex items-center justify-center">
-                  <MessageSquare className="h-3.5 w-3.5 text-orange-accent" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-medium text-foreground/80 block">
-                    Sesión actual
-                  </span>
-                  <span className="text-[10px] text-muted-foreground/30">
-                    {messages.length} mensajes
-                  </span>
-                </div>
-                <Badge
-                  variant="secondary"
-                  className="text-[10px] h-5 px-2 bg-orange-accent/6 text-orange-accent border-orange-accent/8 rounded-lg"
-                >
-                  {messages.length}
-                </Badge>
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="px-3 py-3">
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="px-3 py-2.5 rounded-xl bg-surface/50 border border-border/15 text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Code2 className="h-2.5 w-2.5 text-muted-foreground/30" />
-                    <p className="text-sm font-bold text-foreground/70">{userMessages}</p>
-                  </div>
-                  <p className="text-[9px] text-muted-foreground/30 font-medium">Tuyos</p>
-                </div>
-                <div className="px-3 py-2.5 rounded-xl bg-surface/50 border border-border/15 text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Sparkles className="h-2.5 w-2.5 text-orange-accent/40" />
-                    <p className="text-sm font-bold text-orange-accent/80">{aiMessages}</p>
-                  </div>
-                  <p className="text-[9px] text-muted-foreground/30 font-medium">IA</p>
-                </div>
-              </div>
             </div>
 
             {/* Spacer */}
@@ -205,9 +157,11 @@ export function Sidebar() {
               </TooltipTrigger>
               <TooltipContent side="right">Abrir panel</TooltipContent>
             </Tooltip>
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-orange-accent to-orange-600 flex items-center justify-center shadow-md shadow-orange-accent/15 glow-orange-sm">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
+            <img
+              src="/logo-hache-ia.png"
+              alt="Hache IA"
+              className="h-8 w-8 rounded-xl object-cover"
+            />
           </motion.div>
         )}
       </AnimatePresence>
