@@ -26,10 +26,15 @@ export interface ModelOption {
   description: string;
 }
 
-// Models are read from env var API_MODEL. These are display options only.
-// The actual model used is whatever API_MODEL is set to (or the user's selection).
+// Models available for selection. The API route auto-detects the right strategy:
+// - claude-* → Anthropic API (needs ANTHROPIC_API_KEY)
+// - glm-* → OpenAI-compatible or Z.ai SDK
+// - Any other → OpenAI-compatible or Z.ai SDK
 export const MODELS: ModelOption[] = [
-  { id: "glm-4-plus", name: "GLM-4 Plus", description: "Mejor equilibrio velocidad e inteligencia" },
+  { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4", description: "Mejor modelo de Anthropic, potente y rápido" },
+  { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", description: "Rápido e inteligente, gran equilibrio" },
+  { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku", description: "Más rápido y económico" },
+  { id: "glm-4-plus", name: "GLM-4 Plus", description: "Equilibrio velocidad e inteligencia" },
   { id: "glm-4-flash", name: "GLM-4 Flash", description: "Respuestas más rápidas" },
   { id: "glm-4-long", name: "GLM-4 Long", description: "Contexto largo hasta 128K" },
 ];
