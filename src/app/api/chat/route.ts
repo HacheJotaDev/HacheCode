@@ -36,7 +36,7 @@ async function callWithSDK(
 
 /**
  * Stream chat completions using env vars (for Vercel and other cloud platforms)
- * Returns a ReadableStream with SSE events
+ * Uses the same headers and format as z-ai-web-dev-sdk internally
  */
 async function streamWithEnvVars(
   apiMessages: { role: string; content: string }[],
@@ -44,26 +44,28 @@ async function streamWithEnvVars(
 ): Promise<Response> {
   const url = `${config.baseUrl}/chat/completions`;
 
+  // Same headers as z-ai-web-dev-sdk
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${config.apiKey}`,
+    "X-Z-AI-From": "Z",
   };
 
-  if (config.token) {
-    headers["X-Token"] = config.token;
+  if (config.chatId) {
+    headers["X-Chat-Id"] = config.chatId;
   }
   if (config.userId) {
     headers["X-User-Id"] = config.userId;
+  }
+  if (config.token) {
+    headers["X-Token"] = config.token;
   }
 
   const body: Record<string, unknown> = {
     messages: apiMessages,
     stream: true,
+    thinking: { type: "disabled" },
   };
-
-  if (config.chatId) {
-    body.chat_id = config.chatId;
-  }
 
   const response = await fetch(url, {
     method: "POST",
