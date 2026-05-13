@@ -19,17 +19,17 @@ export function TokenMeter({ used, max }: TokenMeterProps) {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider">
+        <span className="text-[10px] font-medium text-muted-foreground/30 uppercase tracking-wider">
           Uso de tokens
         </span>
-        <span className="text-[10px] font-mono text-muted-foreground/40">
+        <span className="text-[10px] font-mono text-muted-foreground/30">
           {used.toLocaleString()} / {max.toLocaleString()}
         </span>
       </div>
 
-      <div className="h-1.5 w-full rounded-full bg-surface overflow-hidden">
+      <div className="h-1 w-full rounded-full bg-surface overflow-hidden">
         <motion.div
           className={`h-full rounded-full bg-gradient-to-r ${getBarColor()}`}
           initial={{ width: 0 }}
@@ -39,16 +39,16 @@ export function TokenMeter({ used, max }: TokenMeterProps) {
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-muted-foreground/30">
+        <span className="text-[10px] text-muted-foreground/25">
           {percentage.toFixed(1)}% usado
         </span>
         {isHigh && (
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-[10px] text-red-400/70"
+            className="text-[10px] text-red-400/60"
           >
-            Cerca del limite
+            Cerca del límite
           </motion.span>
         )}
       </div>

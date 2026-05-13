@@ -104,8 +104,8 @@
   --accent: oklch(0.2 0.007 265);
   --accent-foreground: oklch(0.93 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 6%);
-  --input: oklch(1 0 0 / 8%);
+  --border: oklch(1 0 0 / 5%);
+  --input: oklch(1 0 0 / 7%);
   --ring: oklch(0.705 0.213 47.604);
   --chart-1: oklch(0.705 0.213 47.604);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -118,7 +118,7 @@
   --sidebar-primary-foreground: oklch(0.115 0.005 265);
   --sidebar-accent: oklch(0.16 0.007 265);
   --sidebar-accent-foreground: oklch(0.93 0 0);
-  --sidebar-border: oklch(1 0 0 / 6%);
+  --sidebar-border: oklch(1 0 0 / 5%);
   --sidebar-ring: oklch(0.705 0.213 47.604);
   --orange-accent: oklch(0.705 0.213 47.604);
   --orange-accent-foreground: oklch(1 0 0);
@@ -139,8 +139,8 @@
 /* Scrollbar minimalista */
 @layer base {
   ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 4px;
+    height: 4px;
   }
 
   ::-webkit-scrollbar-track {
@@ -148,29 +148,29 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.4 0 0 / 20%);
+    background: oklch(0.4 0 0 / 15%);
     border-radius: 9999px;
   }
 
   .dark ::-webkit-scrollbar-thumb {
-    background: oklch(0.5 0 0 / 15%);
+    background: oklch(0.5 0 0 / 12%);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.5 0 0 / 35%);
+    background: oklch(0.5 0 0 / 30%);
   }
 
   .dark ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.6 0 0 / 25%);
+    background: oklch(0.6 0 0 / 20%);
   }
 }
 
 /* Glow sutil */
 .glow-orange-sm {
-  box-shadow: 0 0 12px oklch(0.705 0.213 47.604 / 12%);
+  box-shadow: 0 0 10px oklch(0.705 0.213 47.604 / 10%);
 }
 
-/* Animacion de puntos typing */
+/* Animación de puntos typing */
 @keyframes typing-bounce {
   0%,
   60%,
@@ -178,7 +178,7 @@
     transform: translateY(0);
   }
   30% {
-    transform: translateY(-5px);
+    transform: translateY(-4px);
   }
 }
 
@@ -192,7 +192,7 @@
   animation: typing-bounce 1.4s ease-in-out infinite 0.4s;
 }
 
-/* Animacion del meter */
+/* Animación del meter */
 @keyframes meter-flow {
   0% {
     background-position: 0% 50%;
@@ -209,35 +209,35 @@
 
 /* Markdown estilos */
 .markdown-content h1 {
-  font-size: 1.5rem;
+  font-size: 1.375rem;
   font-weight: 700;
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
+  margin-top: 1.25rem;
+  margin-bottom: 0.625rem;
 }
 
 .markdown-content h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-top: 1.25rem;
-  margin-bottom: 0.5rem;
-}
-
-.markdown-content h3 {
   font-size: 1.125rem;
   font-weight: 600;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
 }
 
+.markdown-content h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 0.875rem;
+  margin-bottom: 0.375rem;
+}
+
 .markdown-content p {
-  margin-bottom: 0.75rem;
-  line-height: 1.75;
+  margin-bottom: 0.625rem;
+  line-height: 1.7;
 }
 
 .markdown-content ul,
 .markdown-content ol {
-  margin-bottom: 0.75rem;
-  padding-left: 1.5rem;
+  margin-bottom: 0.625rem;
+  padding-left: 1.375rem;
 }
 
 .markdown-content ul {
@@ -249,15 +249,15 @@
 }
 
 .markdown-content li {
-  margin-bottom: 0.25rem;
-  line-height: 1.75;
+  margin-bottom: 0.2rem;
+  line-height: 1.7;
 }
 
 .markdown-content blockquote {
-  border-left: 2px solid oklch(0.705 0.213 47.604 / 40%);
-  padding-left: 1rem;
+  border-left: 2px solid oklch(0.705 0.213 47.604 / 30%);
+  padding-left: 0.875rem;
   margin-left: 0;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.625rem;
   color: oklch(0.65 0 0);
 }
 
@@ -265,7 +265,7 @@
   color: oklch(0.705 0.213 47.604);
   text-decoration: underline;
   text-underline-offset: 2px;
-  text-decoration-color: oklch(0.705 0.213 47.604 / 30%);
+  text-decoration-color: oklch(0.705 0.213 47.604 / 25%);
 }
 
 .markdown-content a:hover {
@@ -275,13 +275,13 @@
 .markdown-content table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.625rem;
 }
 
 .markdown-content th,
 .markdown-content td {
-  border: 1px solid oklch(1 0 0 / 8%);
-  padding: 0.5rem 0.75rem;
+  border: 1px solid oklch(1 0 0 / 6%);
+  padding: 0.375rem 0.625rem;
   text-align: left;
 }
 
@@ -291,6 +291,6 @@
 }
 
 .markdown-content hr {
-  border-color: oklch(1 0 0 / 8%);
-  margin: 1rem 0;
+  border-color: oklch(1 0 0 / 6%);
+  margin: 0.875rem 0;
 }

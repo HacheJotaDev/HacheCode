@@ -17,6 +17,7 @@ export interface ChatMessage {
   timestamp: number;
   toolUses?: ToolUse[];
   isStreaming?: boolean;
+  isError?: boolean;
 }
 
 export interface ModelOption {
@@ -27,8 +28,8 @@ export interface ModelOption {
 
 export const MODELS: ModelOption[] = [
   { id: "claude-sonnet-4", name: "Claude Sonnet 4", description: "Mejor equilibrio velocidad e inteligencia" },
-  { id: "claude-opus-4-5", name: "Claude Opus 4.5", description: "Maxima inteligencia" },
-  { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", description: "Respuestas mas rapidas" },
+  { id: "claude-opus-4-5", name: "Claude Opus 4.5", description: "Máxima inteligencia" },
+  { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", description: "Respuestas más rápidas" },
 ];
 
 export interface SessionContext {
@@ -63,23 +64,23 @@ const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now(
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content: `Hola, soy **Claude Code**, tu asistente de programacion con IA.
+  content: `Hola, soy **Claude Code**, tu asistente de programación con IA.
 
 Puedo ayudarte con:
 
-- **Escribir codigo** — Generar, refactorizar o depurar en cualquier lenguaje
+- **Escribir código** — Generar, refactorizar o depurar en cualquier lenguaje
 - **Operaciones de archivos** — Leer, escribir y navegar archivos del proyecto
-- **Buscar codigo** — Encontrar patrones, rastrear referencias y entender codebases
+- **Buscar código** — Encontrar patrones, rastrear referencias y entender codebases
 - **Ejecutar comandos** — Correr comandos y analizar resultados
-- **Arquitectura** — Disenar sistemas, planificar funciones y revisar decisiones
+- **Arquitectura** — Diseñar sistemas, planificar funciones y revisar decisiones
 
 Prueba preguntarme algo como:
-- *"Ayudame a implementar un endpoint REST"*
-- *"Explica el flujo de autenticacion en este proyecto"*
+- *"Ayúdame a implementar un endpoint REST"*
+- *"Explica el flujo de autenticación en este proyecto"*
 - *"Encuentra y arregla el bug en mi componente React"*
 - *"Escribe tests unitarios para mis funciones"*
 
-Que te gustaria trabajar hoy?`,
+¿Qué te gustaría trabajar hoy?`,
   timestamp: Date.now(),
 };
 
@@ -88,13 +89,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectedModel: "claude-sonnet-4",
   isStreaming: false,
   sessionContext: {
-    files: [
-      "src/bridge/bridgeApi.ts",
-      "src/cli/transports/SSETransport.ts",
-      "src/services/api/client.ts",
-      "src/tools/AgentTool/index.ts",
-    ],
-    totalTokens: 2340,
+    files: [],
+    totalTokens: 0,
     maxTokens: 200000,
   },
   sidebarOpen: true,
@@ -137,6 +133,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       apiMessages.push({ role: "user", content });
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 55000);
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -144,11 +143,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           messages: apiMessages,
           model: selectedModel,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Error al obtener respuesta");
+        throw new Error(errorData.error || `Error del servidor (${response.status})`);
       }
 
       const data = await response.json();
@@ -163,6 +165,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ...msgs[lastIdx],
             content: parsedContent,
             isStreaming: false,
+            isError: false,
             toolUses: toolUses.length > 0 ? toolUses : undefined,
           };
         }
@@ -178,15 +181,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Ocurrio un error inesperado";
+      const errorMsg =
+        error instanceof Error
+          ? error.name === "AbortError"
+            ? "La solicitud tardó demasiado. Intenta de nuevo."
+            : error.message
+          : "Ocurrió un error inesperado";
+
       set((state) => {
         const msgs = [...state.messages];
         const lastIdx = msgs.length - 1;
         if (msgs[lastIdx]?.role === "assistant") {
           msgs[lastIdx] = {
             ...msgs[lastIdx],
-            content: `Error: ${errorMsg}\n\nPor favor intenta de nuevo.`,
+            content: errorMsg,
             isStreaming: false,
+            isError: true,
           };
         }
         return { messages: msgs, isStreaming: false };
