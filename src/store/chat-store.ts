@@ -27,9 +27,9 @@ export interface ModelOption {
 }
 
 export const MODELS: ModelOption[] = [
-  { id: "claude-sonnet-4", name: "Claude Sonnet 4", description: "Mejor equilibrio velocidad e inteligencia" },
-  { id: "claude-opus-4-5", name: "Claude Opus 4.5", description: "Máxima inteligencia" },
-  { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", description: "Respuestas más rápidas" },
+  { id: "claude-sonnet-4", name: "Hache Sonnet 4", description: "Mejor equilibrio velocidad e inteligencia" },
+  { id: "claude-opus-4-5", name: "Hache Opus 4.5", description: "Máxima inteligencia" },
+  { id: "claude-haiku-4-5", name: "Hache Haiku 4.5", description: "Respuestas más rápidas" },
 ];
 
 export interface SessionContext {
@@ -133,9 +133,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       apiMessages.push({ role: "user", content });
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 110000);
-
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,10 +140,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           messages: apiMessages,
           model: selectedModel,
         }),
-        signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

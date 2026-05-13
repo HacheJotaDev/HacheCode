@@ -1,28 +1,9 @@
 import ZAI from "z-ai-web-dev-sdk";
-import { NextRequest } from "next/server";
 
 export const maxDuration = 120;
+export const dynamic = "force-dynamic";
 
-export async function POST(request: NextRequest) {
-  try {
-    // Set a hard deadline — if we can't respond in 100s, bail out gracefully
-    const deadline = Date.now() + 100_000;
-
-    const body = await request.json();
-    const { messages, model } = body;
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return Response.json(
-        { error: "Se requiere un array de mensajes válido" },
-        { status: 400 }
-      );
-    }
-
-    const zai = await ZAI.create();
-
-    const systemMessage = {
-      role: "system",
-      content: `Eres Hache Code, un asistente de programación agéntico avanzado que vive en la terminal. Ayudas a desarrolladores a escribir, depurar y entender código. Puedes leer archivos, escribir código, ejecutar comandos y razonar sobre codebases completos.
+const SYSTEM_PROMPT = `Eres Hache Code, un asistente de programación agéntico avanzado que vive en la terminal. Ayudas a desarrolladores a escribir, depurar y entender código. Puedes leer archivos, escribir código, ejecutar comandos y razonar sobre codebases completos.
 
 Comportamientos clave:
 - Responde en ESPAÑOL siempre
@@ -37,35 +18,35 @@ Comportamientos clave:
 - Cuando generes código, inclúyelo siempre en bloques de código markdown con el lenguaje especificado
 - Si el usuario pide crear algo, genera el código completo y funcional
 
-Tus respuestas deben ser útiles, precisas y formateadas para máxima legibilidad en una interfaz tipo terminal.`,
-    };
+Tus respuestas deben ser útiles, precisas y formateadas para máxima legibilidad en una interfaz tipo terminal.`;
 
-    // Only send the last 20 messages to avoid huge prompts
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { messages, model } = body;
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return Response.json(
+        { error: "Se requiere un array de mensajes válido" },
+        { status: 400 }
+      );
+    }
+
+    const zai = await ZAI.create();
+
     const recentMessages = messages.slice(-20);
 
     const apiMessages = [
-      systemMessage,
+      { role: "system", content: SYSTEM_PROMPT },
       ...recentMessages.map((m: { role: string; content: string }) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       })),
     ];
 
-    // Race the API call against the deadline
-    const completionPromise = zai.chat.completions.create({
+    const completion = await zai.chat.completions.create({
       messages: apiMessages,
     });
-
-    const deadlinePromise = new Promise<never>((_, reject) => {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        reject(new Error("Tiempo de espera agotado"));
-        return;
-      }
-      setTimeout(() => reject(new Error("Tiempo de espera agotado")), remaining);
-    });
-
-    const completion = await Promise.race([completionPromise, deadlinePromise]);
 
     const content = completion.choices?.[0]?.message?.content || "";
 

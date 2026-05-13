@@ -12,6 +12,58 @@ import { useChatStore } from "@/store/chat-store";
 import type { ChatMessage as ChatMessageType } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 
+const markdownComponents = {
+  code({ className, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: unknown }) {
+    const match = /language-(\w+)/.exec(className || "");
+    const codeString = String(children).replace(/\n$/, "");
+    if (match) {
+      return <CodeBlock language={match[1]} code={codeString} />;
+    }
+    return (
+      <code className="px-1.5 py-0.5 rounded-md bg-surface text-orange-accent/80 text-[13px] font-mono border border-border/25" {...props}>
+        {children}
+      </code>
+    );
+  },
+  pre({ children }: { children?: React.ReactNode }) {
+    return <>{children}</>;
+  },
+  p({ children }: { children?: React.ReactNode }) {
+    return <p className="mb-2.5 last:mb-0 leading-relaxed">{children}</p>;
+  },
+  ul({ children }: { children?: React.ReactNode }) {
+    return <ul className="mb-2.5 list-disc pl-5 space-y-1">{children}</ul>;
+  },
+  ol({ children }: { children?: React.ReactNode }) {
+    return <ol className="mb-2.5 list-decimal pl-5 space-y-1">{children}</ol>;
+  },
+  li({ children }: { children?: React.ReactNode }) {
+    return <li className="leading-relaxed">{children}</li>;
+  },
+  strong({ children }: { children?: React.ReactNode }) {
+    return <strong className="font-semibold text-foreground/90">{children}</strong>;
+  },
+  h1({ children }: { children?: React.ReactNode }) {
+    return <h1 className="text-lg font-bold mt-4 mb-2 text-foreground">{children}</h1>;
+  },
+  h2({ children }: { children?: React.ReactNode }) {
+    return <h2 className="text-base font-semibold mt-3.5 mb-1.5 text-foreground">{children}</h2>;
+  },
+  h3({ children }: { children?: React.ReactNode }) {
+    return <h3 className="text-sm font-semibold mt-3 mb-1.5 text-foreground">{children}</h3>;
+  },
+  blockquote({ children }: { children?: React.ReactNode }) {
+    return <blockquote className="border-l-2 border-orange-accent/30 pl-3 my-2.5 text-muted-foreground/70">{children}</blockquote>;
+  },
+  a({ href, children }: { href?: string; children?: React.ReactNode }) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-orange-accent hover:text-orange-accent/80 underline underline-offset-2 decoration-orange-accent/30">
+        {children}
+      </a>
+    );
+  },
+};
+
 interface ChatMessageProps {
   message: ChatMessageType;
   index: number;
@@ -89,6 +141,18 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
         {/* Mensaje normal */}
         {!isError && message.isStreaming && !message.content ? (
           <TypingIndicator />
+        ) : !isError && message.isStreaming && message.content ? (
+          <div>
+            <div className="markdown-content text-sm leading-relaxed text-foreground/80">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </div>
+            <span className="inline-block h-4 w-0.5 bg-orange-accent animate-pulse ml-0.5 align-text-bottom" />
+          </div>
         ) : !isError && isUser ? (
           <div className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap">
             {message.content}
@@ -97,73 +161,7 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
           <div className="markdown-content text-sm leading-relaxed text-foreground/80">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              components={{
-                code({ className, children, ...props }) {
-                  const match = /language-(\w+)/.exec(className || "");
-                  const codeString = String(children).replace(/\n$/, "");
-
-                  if (match) {
-                    return (
-                      <CodeBlock
-                        language={match[1]}
-                        code={codeString}
-                      />
-                    );
-                  }
-
-                  return (
-                    <code className="px-1.5 py-0.5 rounded-md bg-surface text-orange-accent/80 text-[13px] font-mono border border-border/25" {...props}>
-                      {children}
-                    </code>
-                  );
-                },
-                pre({ children }) {
-                  return <>{children}</>;
-                },
-                p({ children }) {
-                  return <p className="mb-2.5 last:mb-0 leading-relaxed">{children}</p>;
-                },
-                ul({ children }) {
-                  return <ul className="mb-2.5 list-disc pl-5 space-y-1">{children}</ul>;
-                },
-                ol({ children }) {
-                  return <ol className="mb-2.5 list-decimal pl-5 space-y-1">{children}</ol>;
-                },
-                li({ children }) {
-                  return <li className="leading-relaxed">{children}</li>;
-                },
-                strong({ children }) {
-                  return <strong className="font-semibold text-foreground/90">{children}</strong>;
-                },
-                h1({ children }) {
-                  return <h1 className="text-lg font-bold mt-4 mb-2 text-foreground">{children}</h1>;
-                },
-                h2({ children }) {
-                  return <h2 className="text-base font-semibold mt-3.5 mb-1.5 text-foreground">{children}</h2>;
-                },
-                h3({ children }) {
-                  return <h3 className="text-sm font-semibold mt-3 mb-1.5 text-foreground">{children}</h3>;
-                },
-                blockquote({ children }) {
-                  return (
-                    <blockquote className="border-l-2 border-orange-accent/30 pl-3 my-2.5 text-muted-foreground/70">
-                      {children}
-                    </blockquote>
-                  );
-                },
-                a({ href, children }) {
-                  return (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-orange-accent hover:text-orange-accent/80 underline underline-offset-2 decoration-orange-accent/30"
-                    >
-                      {children}
-                    </a>
-                  );
-                },
-              }}
+              components={markdownComponents}
             >
               {message.content}
             </ReactMarkdown>

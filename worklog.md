@@ -53,3 +53,27 @@ Stage Summary:
 - 502 error root cause: timeout on long API calls (code generation takes ~30-40s)
 - All timeouts increased to accommodate longer AI responses
 - Chat API verified working for both simple and code generation requests
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix 502/504 errors for long code generation and fix textarea layout
+
+Work Log:
+- Identified root cause of 502/504: Caddy reverse proxy times out during long AI responses (~30-40s for code generation)
+- Attempted SSE streaming with heartbeats: worked but caused Next.js dev server instability (process crashes after large SSE responses)
+- Implemented streaming SSE API with heartbeat (5s intervals) to keep proxy alive
+- Reverted to simple JSON API due to dev server stability issues with long-lived SSE connections
+- The SSE approach works correctly (verified with node.js client getting 14KB calculator response)
+- Restructured ChatInput: textarea is now horizontal with inline model selector and send button, all in one row with a container
+- Changed model names to "Hache Sonnet 4", "Hache Opus 4.5", "Hache Haiku 4.5" for brand consistency
+- Added streaming visual support to ChatMessage (cursor blink during streaming)
+- Removed standalone output from next.config.ts for production compatibility
+- API route simplified with force-dynamic and proper error handling
+
+Stage Summary:
+- Textarea is now horizontal (inline with model selector and send button)
+- API works for simple and medium responses
+- Long code generation (calculator) works but may timeout through proxy
+- SSE streaming implementation is ready for when the proxy supports it
+- All text in Spanish, branded as "Hache Code"

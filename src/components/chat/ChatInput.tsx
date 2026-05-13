@@ -26,7 +26,7 @@ function ModelSelector() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 px-2.5 text-xs rounded-lg text-muted-foreground/60 hover:text-foreground border border-transparent hover:border-border/40"
+          className="h-9 gap-1.5 px-3 text-xs rounded-lg text-muted-foreground/60 hover:text-foreground border border-border/40 hover:border-border/60 transition-all"
         >
           <Sparkles className="h-3 w-3 text-orange-accent" />
           <span className="font-medium">{currentModel.name}</span>
@@ -90,43 +90,45 @@ export function ChatInput() {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = "auto";
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
     }
   }, [input]);
 
   return (
     <div className="border-t border-border/30 bg-background/90 backdrop-blur-md">
-      <div className="flex items-end gap-2 px-4 py-3">
-        <ModelSelector />
+      <div className="flex items-center gap-2 px-4 py-3">
+        <div className="flex-1 flex items-center gap-2 bg-surface border border-border/40 rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-orange-accent/15 focus-within:border-orange-accent/25 transition-all">
+          <ModelSelector />
 
-        <div className="flex-1 relative">
+          <div className="h-5 w-px bg-border/30 shrink-0" />
+
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Pregunta lo que necesites..."
+            placeholder="Escribe tu mensaje..."
             rows={1}
             disabled={isStreaming}
-            className="w-full resize-none rounded-xl bg-surface border border-border/40 px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-2 focus:ring-orange-accent/15 focus:border-orange-accent/25 disabled:opacity-50 transition-all font-mono leading-relaxed"
-            style={{ minHeight: "38px", maxHeight: "160px" }}
+            className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none disabled:opacity-50 transition-all font-mono leading-relaxed py-1.5 min-w-0"
+            style={{ minHeight: "24px", maxHeight: "140px" }}
           />
-        </div>
 
-        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-          <Button
-            size="icon"
-            onClick={handleSend}
-            disabled={!input.trim() || isStreaming}
-            className="h-9 w-9 rounded-xl bg-gradient-to-br from-orange-accent to-orange-600 hover:from-orange-accent/90 hover:to-orange-600/90 text-white shadow-lg shadow-orange-accent/10 disabled:opacity-30 disabled:shadow-none transition-all"
-          >
-            {isStreaming ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Send className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </motion.div>
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button
+              size="icon"
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
+              className="h-8 w-8 rounded-lg bg-gradient-to-br from-orange-accent to-orange-600 hover:from-orange-accent/90 hover:to-orange-600/90 text-white shadow-md shadow-orange-accent/10 disabled:opacity-30 disabled:shadow-none transition-all shrink-0"
+            >
+              {isStreaming ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </motion.div>
+        </div>
       </div>
 
       <div className="flex items-center justify-center px-4 pb-2">
