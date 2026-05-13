@@ -77,3 +77,27 @@ Stage Summary:
 - Long code generation (calculator) works but may timeout through proxy
 - SSE streaming implementation is ready for when the proxy supports it
 - All text in Spanish, branded as "Hache Code"
+
+---
+Task ID: 5
+Agent: Main
+Task: Fix 502/504 errors on code generation and make text input horizontal
+
+Work Log:
+- Analyzed user screenshot showing "Unterminated string in JSON" errors in the chat
+- Root cause: Streaming implementation was splitting JSON mid-chunk causing parse errors
+- Also discovered the server process kept dying when started as standalone/background process
+- Rewrote API route with proper SSE buffering (split on \n\n boundaries)
+- Rewrote store with proper SSE parsing on client side
+- Discovered that the server process management was the real issue - needed to use platform's dev.sh script
+- Changed text input from square to horizontal (wider, shorter)
+- Verified: simple chat works through Caddy proxy
+- Verified: calculator code generation (5413 chars) works through Caddy proxy
+- Server stays alive when started via .zscripts/dev.sh
+
+Stage Summary:
+- All chat functionality now works (simple + code generation)
+- Text input is horizontal (not square)
+- Server runs via .zscripts/dev.sh which keeps the process alive
+- Non-streaming API approach works reliably (maxDuration=300s)
+- Caddy proxy on port 81 successfully reaches Next.js on port 3000
