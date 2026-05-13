@@ -26,10 +26,12 @@ export interface ModelOption {
   description: string;
 }
 
+// Models are read from env var API_MODEL. These are display options only.
+// The actual model used is whatever API_MODEL is set to (or the user's selection).
 export const MODELS: ModelOption[] = [
-  { id: "claude-sonnet-4", name: "Hache Sonnet 4", description: "Mejor equilibrio velocidad e inteligencia" },
-  { id: "claude-opus-4-5", name: "Hache Opus 4.5", description: "Máxima inteligencia" },
-  { id: "claude-haiku-4-5", name: "Hache Haiku 4.5", description: "Respuestas más rápidas" },
+  { id: "glm-4-plus", name: "GLM-4 Plus", description: "Mejor equilibrio velocidad e inteligencia" },
+  { id: "glm-4-flash", name: "GLM-4 Flash", description: "Respuestas más rápidas" },
+  { id: "glm-4-long", name: "GLM-4 Long", description: "Contexto largo hasta 128K" },
 ];
 
 export interface SessionContext {
@@ -86,7 +88,7 @@ Prueba preguntarme algo como:
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [WELCOME_MESSAGE],
-  selectedModel: "claude-sonnet-4",
+  selectedModel: "glm-4-plus",
   isStreaming: false,
   sessionContext: {
     files: [],
@@ -182,7 +184,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
                 if (parsed.type === "delta" && parsed.content) {
                   fullContent += parsed.content;
-                  // Update message progressively
                   set((state) => {
                     const msgs = [...state.messages];
                     const lastIdx = msgs.length - 1;
@@ -212,7 +213,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         }
 
-        // Final update - mark streaming complete
+        // Final update
         const toolUses = parseToolUses(fullContent);
         set((state) => {
           const msgs = [...state.messages];
@@ -238,7 +239,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           };
         });
       } else {
-        // Handle JSON response (non-streaming SDK fallback)
+        // Handle JSON response (non-streaming)
         const data = await response.json();
         const parsedContent = data.content || "No pude generar una respuesta.";
         const toolUses = parseToolUses(parsedContent);
