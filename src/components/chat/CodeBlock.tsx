@@ -58,7 +58,6 @@ export function CodeBlock({ language, code, filename }: CodeBlockProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback
       const textarea = document.createElement("textarea");
       textarea.value = code;
       document.body.appendChild(textarea);
@@ -71,19 +70,19 @@ export function CodeBlock({ language, code, filename }: CodeBlockProps) {
   };
 
   return (
-    <div className="my-3 rounded-lg overflow-hidden border border-border bg-[#1a1b26]">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#16171f] border-b border-border/50">
+    <div className="my-3 rounded-xl overflow-hidden border border-border/30 bg-[#1a1b26]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3.5 py-2 bg-[#16171f] border-b border-border/20">
         <div className="flex items-center gap-2">
-          <FileCode2 className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-[11px] font-mono text-muted-foreground">
+          <FileCode2 className="h-3.5 w-3.5 text-muted-foreground/50" />
+          <span className="text-[11px] font-mono text-muted-foreground/50">
             {filename || lang}
           </span>
         </div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          className="h-6 w-6 rounded-md text-muted-foreground/40 hover:text-foreground"
           onClick={handleCopy}
         >
           <AnimatePresence mode="wait">
@@ -93,9 +92,9 @@ export function CodeBlock({ language, code, filename }: CodeBlockProps) {
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.5, opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.12 }}
               >
-                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
               </motion.div>
             ) : (
               <motion.div
@@ -103,7 +102,7 @@ export function CodeBlock({ language, code, filename }: CodeBlockProps) {
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.5, opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: 0.12 }}
               >
                 <Copy className="h-3.5 w-3.5" />
               </motion.div>
@@ -112,17 +111,17 @@ export function CodeBlock({ language, code, filename }: CodeBlockProps) {
         </Button>
       </div>
 
-      {/* Code */}
+      {/* Codigo */}
       <div className="code-block-pre border-0 rounded-none">
         <SyntaxHighlighter
           language={lang}
           style={oneDark}
           customStyle={{
             margin: 0,
-            padding: "0.75rem 1rem",
+            padding: "0.875rem 1rem",
             background: "transparent",
             fontSize: "0.8125rem",
-            lineHeight: "1.6",
+            lineHeight: "1.7",
           }}
           codeTagProps={{
             style: {
@@ -134,7 +133,7 @@ export function CodeBlock({ language, code, filename }: CodeBlockProps) {
           lineNumberStyle={{
             minWidth: "2.5em",
             paddingRight: "1em",
-            color: "oklch(0.45 0 0)",
+            color: "oklch(0.4 0 0 / 40%)",
           }}
         >
           {code}

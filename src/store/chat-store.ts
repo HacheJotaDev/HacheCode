@@ -26,9 +26,9 @@ export interface ModelOption {
 }
 
 export const MODELS: ModelOption[] = [
-  { id: "claude-sonnet-4", name: "Claude Sonnet 4", description: "Best balance of speed & intelligence" },
-  { id: "claude-opus-4-5", name: "Claude Opus 4.5", description: "Maximum intelligence" },
-  { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", description: "Fastest responses" },
+  { id: "claude-sonnet-4", name: "Claude Sonnet 4", description: "Mejor equilibrio velocidad e inteligencia" },
+  { id: "claude-opus-4-5", name: "Claude Opus 4.5", description: "Maxima inteligencia" },
+  { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", description: "Respuestas mas rapidas" },
 ];
 
 export interface SessionContext {
@@ -63,23 +63,23 @@ const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now(
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content: `Welcome to **Claude Code** — your AI-powered coding assistant in the browser.
+  content: `Hola, soy **Claude Code**, tu asistente de programacion con IA.
 
-I can help you with:
+Puedo ayudarte con:
 
-- 📝 **Writing code** — Generate, refactor, or debug code in any language
-- 📂 **File operations** — Read, write, and navigate your project files
-- 🔍 **Code search** — Find patterns, trace references, and understand codebases
-- ▶️ **Run commands** — Execute shell commands and interpret results
-- 🧠 **Architecture** — Design systems, plan features, and review decisions
+- **Escribir codigo** — Generar, refactorizar o depurar en cualquier lenguaje
+- **Operaciones de archivos** — Leer, escribir y navegar archivos del proyecto
+- **Buscar codigo** — Encontrar patrones, rastrear referencias y entender codebases
+- **Ejecutar comandos** — Correr comandos y analizar resultados
+- **Arquitectura** — Disenar sistemas, planificar funciones y revisar decisiones
 
-Try asking me something like:
-- *"Help me implement a REST API endpoint"*
-- *"Explain the auth flow in this codebase"*
-- *"Find and fix the bug in my React component"*
-- *"Write unit tests for my utility functions"*
+Prueba preguntarme algo como:
+- *"Ayudame a implementar un endpoint REST"*
+- *"Explica el flujo de autenticacion en este proyecto"*
+- *"Encuentra y arregla el bug en mi componente React"*
+- *"Escribe tests unitarios para mis funciones"*
 
-What would you like to work on?`,
+Que te gustaria trabajar hoy?`,
   timestamp: Date.now(),
 };
 
@@ -123,16 +123,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sendMessage: async (content: string) => {
     const { messages, selectedModel, addMessage, setIsStreaming } = get();
 
-    // Add user message
     addMessage({ role: "user", content });
-
-    // Add empty assistant message for streaming
     addMessage({ role: "assistant", content: "", isStreaming: true });
-
     setIsStreaming(true);
 
     try {
-      // Prepare messages for API (exclude welcome message)
       const apiMessages = messages
         .filter((m) => m.id !== "welcome" && m.role !== "system")
         .map((m) => ({
@@ -140,7 +135,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: m.content,
         }));
 
-      // Add the new user message
       apiMessages.push({ role: "user", content });
 
       const response = await fetch("/api/chat", {
@@ -154,13 +148,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to get response");
+        throw new Error(errorData.error || "Error al obtener respuesta");
       }
 
       const data = await response.json();
-
-      // Parse tool use indicators from content
-      const parsedContent = data.content || "I couldn't generate a response.";
+      const parsedContent = data.content || "No pude generar una respuesta.";
       const toolUses = parseToolUses(parsedContent);
 
       set((state) => {
@@ -186,14 +178,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "An unexpected error occurred";
+      const errorMsg = error instanceof Error ? error.message : "Ocurrio un error inesperado";
       set((state) => {
         const msgs = [...state.messages];
         const lastIdx = msgs.length - 1;
         if (msgs[lastIdx]?.role === "assistant") {
           msgs[lastIdx] = {
             ...msgs[lastIdx],
-            content: `⚠️ **Error**: ${errorMsg}\n\nPlease try again or check your connection.`,
+            content: `Error: ${errorMsg}\n\nPor favor intenta de nuevo.`,
             isStreaming: false,
           };
         }
@@ -229,14 +221,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearChat: () => set({ messages: [WELCOME_MESSAGE], sessionContext: { ...get().sessionContext, totalTokens: 0 } }),
 }));
 
-// Parse tool-use style indicators from content
 function parseToolUses(content: string): ToolUse[] {
   const tools: ToolUse[] = [];
   const patterns = [
-    { regex: /📖\s*(?:Reading|Read)\s+(?:file\s+)?[`"]?([^`"\n]+)[`"]?/gi, type: "file_read" as const, label: "Read File" },
-    { regex: /✏️\s*(?:Writing|Write|Wrote)\s+(?:to\s+)?[`"]?([^`"\n]+)[`"]?/gi, type: "file_write" as const, label: "Write File" },
-    { regex: /▶️\s*(?:Running|Run|Executed)\s+[`"]?([^`"\n]+)[`"]?/gi, type: "bash_command" as const, label: "Run Command" },
-    { regex: /🔍\s*(?:Searching|Search|Found)\s+[^`"\n]*[`"]?([^`"\n]+)[`"]?/gi, type: "search" as const, label: "Search" },
+    { regex: /📖\s*(?:Reading|Read|Leyendo)\s+(?:file\s+)?[`"]?([^`"\n]+)[`"]?/gi, type: "file_read" as const, label: "Leer archivo" },
+    { regex: /✏️\s*(?:Writing|Write|Wrote|Escribiendo)\s+(?:to\s+)?[`"]?([^`"\n]+)[`"]?/gi, type: "file_write" as const, label: "Escribir archivo" },
+    { regex: /▶️\s*(?:Running|Run|Executed|Ejecutando)\s+[`"]?([^`"\n]+)[`"]?/gi, type: "bash_command" as const, label: "Ejecutar comando" },
+    { regex: /🔍\s*(?:Searching|Search|Found|Buscando)\s+[^`"\n]*[`"]?([^`"\n]+)[`"]?/gi, type: "search" as const, label: "Buscar" },
   ];
 
   for (const pattern of patterns) {

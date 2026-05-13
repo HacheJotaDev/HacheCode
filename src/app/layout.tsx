@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Claude Code - AI Coding Assistant",
-  description: "An agentic AI coding assistant that lives in your browser. Write, debug, and understand code with Claude.",
-  keywords: ["Claude Code", "AI", "coding assistant", "development", "TypeScript"],
+  title: "Claude Code — Asistente IA de Codigo",
+  description: "Asistente de programacion con IA en tu navegador. Escribe, depura y entiende codigo con Claude.",
+  keywords: ["Claude Code", "IA", "asistente codigo", "programacion", "TypeScript"],
   authors: [{ name: "Claude Code" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
@@ -30,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="dark">
+    <html lang="es" suppressHydrationWarning className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

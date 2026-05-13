@@ -18,43 +18,37 @@ export function TokenMeter({ used, max }: TokenMeterProps) {
     return "from-orange-accent to-orange-500";
   };
 
-  const getGlowColor = () => {
-    if (isHigh) return "shadow-red-500/30";
-    if (isMedium) return "shadow-amber-500/20";
-    return "shadow-orange-accent/20";
-  };
-
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-          Token Usage
+        <span className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wider">
+          Uso de tokens
         </span>
-        <span className="text-[10px] font-mono text-muted-foreground">
+        <span className="text-[10px] font-mono text-muted-foreground/40">
           {used.toLocaleString()} / {max.toLocaleString()}
         </span>
       </div>
 
       <div className="h-1.5 w-full rounded-full bg-surface overflow-hidden">
         <motion.div
-          className={`h-full rounded-full bg-gradient-to-r ${getBarColor()} shadow-lg ${getGlowColor()}`}
+          className={`h-full rounded-full bg-gradient-to-r ${getBarColor()}`}
           initial={{ width: 0 }}
           animate={{ width: `${percentage}%` }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
         />
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-muted-foreground/60">
-          {percentage.toFixed(1)}% used
+        <span className="text-[10px] text-muted-foreground/30">
+          {percentage.toFixed(1)}% usado
         </span>
         {isHigh && (
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-[10px] text-red-400"
+            className="text-[10px] text-red-400/70"
           >
-            Approaching limit
+            Cerca del limite
           </motion.span>
         )}
       </div>

@@ -28,10 +28,10 @@ const TOOL_COLORS = {
 };
 
 const TOOL_BG = {
-  file_read: "bg-sky-400/8 border-sky-400/15",
-  file_write: "bg-emerald-400/8 border-emerald-400/15",
-  bash_command: "bg-amber-400/8 border-amber-400/15",
-  search: "bg-violet-400/8 border-violet-400/15",
+  file_read: "bg-sky-400/5 border-sky-400/10",
+  file_write: "bg-emerald-400/5 border-emerald-400/10",
+  bash_command: "bg-amber-400/5 border-amber-400/10",
+  search: "bg-violet-400/5 border-violet-400/10",
 };
 
 interface ToolCallBlockProps {
@@ -48,23 +48,21 @@ export function ToolCallBlock({ tool }: ToolCallBlockProps) {
     <div className="my-2">
       <motion.button
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border text-xs font-mono transition-colors ${bgClass}`}
-        whileHover={{ scale: 1.005 }}
-        whileTap={{ scale: 0.995 }}
+        className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border text-xs font-mono transition-all duration-150 ${bgClass} hover:brightness-110`}
       >
         {isExpanded ? (
-          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/60" />
         ) : (
-          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/60" />
         )}
         <Icon className={`h-3.5 w-3.5 shrink-0 ${colorClass}`} />
         <span className={colorClass}>{tool.label}</span>
         {tool.detail && (
-          <span className="text-muted-foreground truncate">
+          <span className="text-muted-foreground/60 truncate">
             {tool.detail}
           </span>
         )}
-        <CheckCircle2 className="h-3 w-3 ml-auto shrink-0 text-emerald-500/60" />
+        <CheckCircle2 className="h-3 w-3 ml-auto shrink-0 text-emerald-500/50" />
       </motion.button>
 
       <AnimatePresence>
@@ -73,11 +71,11 @@ export function ToolCallBlock({ tool }: ToolCallBlockProps) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.15 }}
             className="overflow-hidden"
           >
-            <div className="ml-6 mt-1 px-3 py-2 rounded-md bg-[#0d0e14] border border-border/50 font-mono text-[11px] text-muted-foreground max-h-40 overflow-y-auto">
-              {tool.output || (tool.detail ? `Path: ${tool.detail}` : "No output")}
+            <div className="ml-6 mt-1.5 px-3 py-2 rounded-lg bg-[#0d0e14] border border-border/30 font-mono text-[11px] text-muted-foreground/70 max-h-40 overflow-y-auto">
+              {tool.output || (tool.detail ? `Ruta: ${tool.detail}` : "Sin salida")}
             </div>
           </motion.div>
         )}
