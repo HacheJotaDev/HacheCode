@@ -143,37 +143,130 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = await response.json().catch(() => ({ error: `Error del servidor (${response.status})` }));
         throw new Error(errorData.error || `Error del servidor (${response.status})`);
       }
 
-      const data = await response.json();
-      const parsedContent = data.content || "No pude generar una respuesta.";
-      const toolUses = parseToolUses(parsedContent);
+      const contentType = response.headers.get("content-type") || "";
 
-      set((state) => {
-        const msgs = [...state.messages];
-        const lastIdx = msgs.length - 1;
-        if (msgs[lastIdx]?.role === "assistant") {
-          msgs[lastIdx] = {
-            ...msgs[lastIdx],
-            content: parsedContent,
-            isStreaming: false,
-            isError: false,
-            toolUses: toolUses.length > 0 ? toolUses : undefined,
-          };
+      // Handle SSE streaming response
+      if (contentType.includes("text/event-stream") && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = "";
+        let buffer = "";
+        let usageData: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+
+          for (const part of parts) {
+            const trimmed = part.trim();
+            if (!trimmed) continue;
+
+            const lines = trimmed.split("\n");
+            for (const line of lines) {
+              const lineTrimmed = line.trim();
+              if (!lineTrimmed.startsWith("data: ")) continue;
+
+              const dataStr = lineTrimmed.slice(6);
+              if (dataStr === "[DONE]") continue;
+
+              try {
+                const parsed = JSON.parse(dataStr);
+
+                if (parsed.type === "delta" && parsed.content) {
+                  fullContent += parsed.content;
+                  // Update message progressively
+                  set((state) => {
+                    const msgs = [...state.messages];
+                    const lastIdx = msgs.length - 1;
+                    if (msgs[lastIdx]?.role === "assistant") {
+                      msgs[lastIdx] = {
+                        ...msgs[lastIdx],
+                        content: fullContent,
+                      };
+                    }
+                    return { messages: msgs };
+                  });
+                } else if (parsed.type === "done") {
+                  if (parsed.usage) {
+                    usageData = parsed.usage;
+                  }
+                } else if (parsed.type === "error") {
+                  throw new Error(parsed.error || "Error en el stream");
+                }
+              } catch (e) {
+                if (e instanceof Error && e.message !== "Error en el stream") {
+                  // Skip malformed JSON
+                } else {
+                  throw e;
+                }
+              }
+            }
+          }
         }
-        return {
-          messages: msgs,
-          isStreaming: false,
-          sessionContext: {
-            ...state.sessionContext,
-            totalTokens: data.usage
-              ? data.usage.totalTokens
-              : state.sessionContext.totalTokens + Math.ceil(parsedContent.length / 4),
-          },
-        };
-      });
+
+        // Final update - mark streaming complete
+        const toolUses = parseToolUses(fullContent);
+        set((state) => {
+          const msgs = [...state.messages];
+          const lastIdx = msgs.length - 1;
+          if (msgs[lastIdx]?.role === "assistant") {
+            msgs[lastIdx] = {
+              ...msgs[lastIdx],
+              content: fullContent || "No pude generar una respuesta.",
+              isStreaming: false,
+              isError: false,
+              toolUses: toolUses.length > 0 ? toolUses : undefined,
+            };
+          }
+          return {
+            messages: msgs,
+            isStreaming: false,
+            sessionContext: {
+              ...state.sessionContext,
+              totalTokens: usageData
+                ? usageData.totalTokens
+                : state.sessionContext.totalTokens + Math.ceil(fullContent.length / 4),
+            },
+          };
+        });
+      } else {
+        // Handle JSON response (non-streaming SDK fallback)
+        const data = await response.json();
+        const parsedContent = data.content || "No pude generar una respuesta.";
+        const toolUses = parseToolUses(parsedContent);
+
+        set((state) => {
+          const msgs = [...state.messages];
+          const lastIdx = msgs.length - 1;
+          if (msgs[lastIdx]?.role === "assistant") {
+            msgs[lastIdx] = {
+              ...msgs[lastIdx],
+              content: parsedContent,
+              isStreaming: false,
+              isError: false,
+              toolUses: toolUses.length > 0 ? toolUses : undefined,
+            };
+          }
+          return {
+            messages: msgs,
+            isStreaming: false,
+            sessionContext: {
+              ...state.sessionContext,
+              totalTokens: data.usage
+                ? data.usage.totalTokens
+                : state.sessionContext.totalTokens + Math.ceil(parsedContent.length / 4),
+            },
+          };
+        });
+      }
     } catch (error) {
       const errorMsg =
         error instanceof Error

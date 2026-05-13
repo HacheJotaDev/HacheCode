@@ -1,4 +1,4 @@
-export const maxDuration = 300;
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 const SYSTEM_PROMPT = `Eres Hache Code, un asistente de programación agéntico avanzado. Ayudas a desarrolladores a escribir, depurar y entender código.
@@ -20,48 +20,28 @@ interface ChatMessageInput {
   content: string;
 }
 
-interface EnvConfig {
-  baseUrl: string;
-  apiKey: string;
-  chatId?: string;
-  userId?: string;
-  token?: string;
-}
-
-function getEnvConfig(): EnvConfig | null {
-  const baseUrl = process.env.ZAI_BASE_URL;
-  const apiKey = process.env.ZAI_API_KEY;
-
-  if (!baseUrl || !apiKey) {
-    return null;
-  }
-
-  return {
-    baseUrl,
-    apiKey,
-    chatId: process.env.ZAI_CHAT_ID,
-    userId: process.env.ZAI_USER_ID,
-    token: process.env.ZAI_TOKEN,
-  };
-}
-
+/**
+ * Try using z-ai-web-dev-sdk (works in local Z.ai environment with auto-config)
+ */
 async function callWithSDK(
   apiMessages: { role: "user" | "assistant" | "system"; content: string }[]
 ) {
   const ZAI = (await import("z-ai-web-dev-sdk")).default;
   const zai = await ZAI.create();
-
   const completion = await zai.chat.completions.create({
     messages: apiMessages,
   });
-
   return completion;
 }
 
-async function callWithEnvVars(
+/**
+ * Stream chat completions using env vars (for Vercel and other cloud platforms)
+ * Returns a ReadableStream with SSE events
+ */
+async function streamWithEnvVars(
   apiMessages: { role: string; content: string }[],
-  config: EnvConfig
-) {
+  config: { baseUrl: string; apiKey: string; chatId?: string; userId?: string; token?: string }
+): Promise<Response> {
   const url = `${config.baseUrl}/chat/completions`;
 
   const headers: Record<string, string> = {
@@ -72,14 +52,13 @@ async function callWithEnvVars(
   if (config.token) {
     headers["X-Token"] = config.token;
   }
-
   if (config.userId) {
     headers["X-User-Id"] = config.userId;
   }
 
   const body: Record<string, unknown> = {
     messages: apiMessages,
-    stream: false,
+    stream: true,
   };
 
   if (config.chatId) {
@@ -94,12 +73,10 @@ async function callWithEnvVars(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
-    throw new Error(
-      `API request failed (${response.status}): ${errorText}`
-    );
+    throw new Error(`API request failed (${response.status}): ${errorText}`);
   }
 
-  return await response.json();
+  return response;
 }
 
 export async function POST(request: Request) {
@@ -124,51 +101,149 @@ export async function POST(request: Request) {
       })),
     ];
 
-    let completion;
+    const baseUrl = process.env.ZAI_BASE_URL;
+    const apiKey = process.env.ZAI_API_KEY;
 
-    // Try SDK first (works locally with .z-ai-config file)
-    // Fall back to env vars (works on Vercel and other cloud platforms)
+    // If env vars are configured, use streaming (best for Vercel)
+    if (baseUrl && apiKey) {
+      const config = {
+        baseUrl,
+        apiKey,
+        chatId: process.env.ZAI_CHAT_ID,
+        userId: process.env.ZAI_USER_ID,
+        token: process.env.ZAI_TOKEN,
+      };
+
+      try {
+        const upstreamResponse = await streamWithEnvVars(apiMessages, config);
+
+        // Create a passthrough stream that re-emits SSE events cleanly
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            const reader = upstreamResponse.body!.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let totalContent = "";
+            let promptTokens = 0;
+            let completionTokens = 0;
+
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (!trimmed || trimmed === "data: [DONE]") continue;
+                  if (!trimmed.startsWith("data: ")) continue;
+
+                  try {
+                    const json = JSON.parse(trimmed.slice(6));
+                    const delta = json.choices?.[0]?.delta?.content;
+                    if (delta) {
+                      totalContent += delta;
+                      controller.enqueue(
+                        encoder.encode(`data: ${JSON.stringify({ type: "delta", content: delta })}\n\n`)
+                      );
+                    }
+
+                    // Capture usage if present
+                    if (json.usage) {
+                      promptTokens = json.usage.prompt_tokens || 0;
+                      completionTokens = json.usage.completion_tokens || 0;
+                    }
+                  } catch {
+                    // Skip malformed JSON chunks
+                  }
+                }
+              }
+
+              // Send usage info at the end
+              if (totalContent) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      type: "done",
+                      content: totalContent,
+                      usage: {
+                        promptTokens,
+                        completionTokens,
+                        totalTokens: promptTokens + completionTokens,
+                      },
+                      model: model || "hache-sonnet-4",
+                    })}\n\n`
+                  )
+                );
+              }
+
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            } catch (error) {
+              console.error("Stream error:", error);
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ type: "error", error: "Stream interrupted" })}\n\n`
+                )
+              );
+              controller.close();
+            }
+          },
+        });
+
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+            "X-Accel-Buffering": "no",
+          },
+        });
+      } catch (streamError) {
+        console.error("Streaming failed:", streamError);
+        // Fall through to non-streaming SDK approach
+      }
+    }
+
+    // Fallback: Try SDK (works locally with .z-ai-config file)
     try {
-      completion = await callWithSDK(apiMessages);
-    } catch (sdkError) {
-      console.log(
-        "SDK not available, trying environment variables:",
-        sdkError instanceof Error ? sdkError.message : "Unknown error"
-      );
+      const completion = await callWithSDK(apiMessages);
+      const content = completion.choices?.[0]?.message?.content || "";
 
-      const envConfig = getEnvConfig();
-      if (!envConfig) {
-        throw new Error(
-          "No se pudo conectar con la API. Configura las variables de entorno (ZAI_BASE_URL, ZAI_API_KEY) o el archivo .z-ai-config."
+      if (!content) {
+        return Response.json(
+          { error: "No se pudo generar una respuesta. Intenta de nuevo." },
+          { status: 500 }
         );
       }
 
-      completion = await callWithEnvVars(apiMessages, envConfig);
-    }
-
-    const content = completion.choices?.[0]?.message?.content || "";
-
-    if (!content) {
+      const usage = completion.usage;
+      return Response.json({
+        content,
+        model: model || "hache-sonnet-4",
+        usage: usage
+          ? {
+              promptTokens: usage.prompt_tokens || 0,
+              completionTokens: usage.completion_tokens || 0,
+              totalTokens:
+                (usage.prompt_tokens || 0) + (usage.completion_tokens || 0),
+            }
+          : undefined,
+      });
+    } catch (sdkError) {
+      console.error("SDK error:", sdkError);
       return Response.json(
-        { error: "No se pudo generar una respuesta. Intenta de nuevo." },
+        {
+          error:
+            "No se pudo conectar con la API. Configura las variables de entorno ZAI_BASE_URL y ZAI_API_KEY en Vercel.",
+        },
         { status: 500 }
       );
     }
-
-    const usage = completion.usage;
-
-    return Response.json({
-      content,
-      model: model || "claude-sonnet-4",
-      usage: usage
-        ? {
-            promptTokens: usage.prompt_tokens || 0,
-            completionTokens: usage.completion_tokens || 0,
-            totalTokens:
-              (usage.prompt_tokens || 0) + (usage.completion_tokens || 0),
-          }
-        : undefined,
-    });
   } catch (error: unknown) {
     console.error("Chat API error:", error);
     const message =

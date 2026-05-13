@@ -1,12 +1,8 @@
 # dependencies
-node_modules
+/node_modules
 /.pnp
 .pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+.yarn/install-state.gz
 
 # testing
 /coverage
@@ -29,8 +25,9 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files
-.env*
-!.env.example
+.env
+.env*.local
+.env.production
 
 # vercel
 .vercel
@@ -39,49 +36,32 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# z-ai SDK config (contains secrets)
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Z.ai platform files (not needed for Vercel)
 .z-ai-config
+.zscripts/
+Caddyfile
 
-# logs
+# Z.ai environment artifacts (not part of the app)
+skills/
+agent-ctx/
+db/
+prisma/
+mini-services/
+examples/
+download/
+upload/
+search*.json
+repo*_page.json
 *.log
-dev.log
-dev.out.log
-server.log
-
-# local / dev-only
-local-*
-.claude
-
-# Sandbox / development infrastructure
-/skills/
-/db/
-/examples/
-/mini-services/
-/agent-ctx/
-/download/
-/upload/
-/.zscripts/
-
-# Prisma (not needed for Vercel deployment)
-/prisma/
-
-# Local database connection
-src/lib/db.ts
-
-# Data files
-/repo*.json
-/search*.json
-
-# Server config
-/Caddyfile
-
-# Scripts and logs
-/worklog.md
-/watchdog*
-/keep-alive*
-/safe-start*
-/start-server*
-
-# Misc dev files
-prompt
-test
+*.out
+watchdog.*
+keep-alive.*
+safe-start.*
+start-server.*
+worklog.md

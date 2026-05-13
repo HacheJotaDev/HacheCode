@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   keywords: ["Hache Code", "IA", "asistente codigo", "programacion", "TypeScript"],
   authors: [{ name: "Hache Code" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
 };
 
