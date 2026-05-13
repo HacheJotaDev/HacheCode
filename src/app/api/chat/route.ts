@@ -1,6 +1,6 @@
 import ZAI from "z-ai-web-dev-sdk";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 const SYSTEM_PROMPT = `Eres Hache Code, un asistente de programación agéntico avanzado que vive en la terminal. Ayudas a desarrolladores a escribir, depurar y entender código. Puedes leer archivos, escribir código, ejecutar comandos y razonar sobre codebases completos.
@@ -44,31 +44,79 @@ export async function POST(request: Request) {
       })),
     ];
 
-    const completion = await zai.chat.completions.create({
+    // Use streaming to keep the connection alive and avoid timeouts
+    const streamBody = await zai.chat.completions.create({
       messages: apiMessages,
+      stream: true,
     });
 
-    const content = completion.choices?.[0]?.message?.content || "";
+    // The SDK returns a ReadableStream when stream: true
+    const upstreamStream = streamBody as ReadableStream<Uint8Array>;
 
-    if (!content) {
-      return Response.json(
-        { error: "No se pudo generar una respuesta. Intenta de nuevo." },
-        { status: 500 }
-      );
-    }
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
 
-    const usage = completion.usage;
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const text = decoder.decode(chunk, { stream: true });
+        const lines = text.split("\n");
 
-    return Response.json({
-      content,
-      model: model || "claude-sonnet-4",
-      usage: usage
-        ? {
-            promptTokens: usage.prompt_tokens || 0,
-            completionTokens: usage.completion_tokens || 0,
-            totalTokens: (usage.prompt_tokens || 0) + (usage.completion_tokens || 0),
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          // Skip SSE comment lines
+          if (trimmed.startsWith(":")) continue;
+
+          // Handle SSE data lines
+          if (trimmed.startsWith("data: ")) {
+            const data = trimmed.slice(6);
+            if (data === "[DONE]") {
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content || "";
+              if (content) {
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ content, done: false })}\n\n`)
+                );
+              }
+            } catch {
+              // Forward non-JSON as-is
+              controller.enqueue(encoder.encode(`${trimmed}\n\n`));
+            }
+          } else {
+            // Try to parse as raw JSON (some responses don't use SSE format)
+            try {
+              const parsed = JSON.parse(trimmed);
+              const content = parsed.choices?.[0]?.delta?.content || "";
+              if (content) {
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ content, done: false })}\n\n`)
+                );
+              }
+            } catch {
+              // Skip unparseable content
+            }
           }
-        : undefined,
+        }
+      },
+      flush(controller) {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      },
+    });
+
+    const readable = upstreamStream.pipeThrough(transformStream);
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
     });
   } catch (error: unknown) {
     console.error("Chat API error:", error);

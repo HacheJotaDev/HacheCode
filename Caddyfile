@@ -9,9 +9,10 @@
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Real-IP {remote_host}
+			flush_interval -1
 			transport http {
-				read_timeout 120s
-				write_timeout 120s
+				read_timeout 300s
+				write_timeout 300s
 			}
 		}
 	}
@@ -22,9 +23,10 @@
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Real-IP {remote_host}
+			flush_interval -1
 			transport http {
-				read_timeout 120s
-				write_timeout 120s
+				read_timeout 300s
+				write_timeout 300s
 			}
 		}
 	}

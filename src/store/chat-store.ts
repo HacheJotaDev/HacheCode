@@ -48,6 +48,7 @@ interface ChatState {
 
   addMessage: (message: Omit<ChatMessage, "id" | "timestamp">) => void;
   updateLastMessage: (content: string) => void;
+  appendToLastMessage: (chunk: string) => void;
   sendMessage: (content: string) => Promise<void>;
   setSelectedModel: (model: string) => void;
   setIsStreaming: (streaming: boolean) => void;
@@ -116,6 +117,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
+  appendToLastMessage: (chunk) => {
+    set((state) => {
+      const messages = [...state.messages];
+      const lastIdx = messages.length - 1;
+      if (lastIdx >= 0 && messages[lastIdx].role === "assistant") {
+        messages[lastIdx] = {
+          ...messages[lastIdx],
+          content: messages[lastIdx].content + chunk,
+        };
+      }
+      return { messages };
+    });
+  },
+
   sendMessage: async (content: string) => {
     const { messages, selectedModel, addMessage, setIsStreaming } = get();
 
@@ -147,9 +162,52 @@ export const useChatStore = create<ChatState>((set, get) => ({
         throw new Error(errorData.error || `Error del servidor (${response.status})`);
       }
 
-      const data = await response.json();
-      const parsedContent = data.content || "No pude generar una respuesta.";
-      const toolUses = parseToolUses(parsedContent);
+      // Process SSE stream
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No se pudo leer la respuesta");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete SSE lines
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+            if (parsed.content) {
+              fullContent += parsed.content;
+              get().appendToLastMessage(parsed.content);
+            }
+          } catch (e) {
+            if (e instanceof Error && e.message !== "Unexpected token") {
+              throw e;
+            }
+            // Skip unparseable chunks
+          }
+        }
+      }
+
+      // Finalize the message
+      const finalContent = fullContent || "No pude generar una respuesta.";
+      const toolUses = parseToolUses(finalContent);
 
       set((state) => {
         const msgs = [...state.messages];
@@ -157,7 +215,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (msgs[lastIdx]?.role === "assistant") {
           msgs[lastIdx] = {
             ...msgs[lastIdx],
-            content: parsedContent,
+            content: finalContent,
             isStreaming: false,
             isError: false,
             toolUses: toolUses.length > 0 ? toolUses : undefined,
@@ -168,18 +226,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
           isStreaming: false,
           sessionContext: {
             ...state.sessionContext,
-            totalTokens: data.usage
-              ? data.usage.totalTokens
-              : state.sessionContext.totalTokens + Math.ceil(parsedContent.length / 4),
+            totalTokens:
+              state.sessionContext.totalTokens + Math.ceil(finalContent.length / 4),
           },
         };
       });
     } catch (error) {
       const errorMsg =
         error instanceof Error
-          ? error.name === "AbortError"
-            ? "La solicitud tardó demasiado. Intenta de nuevo."
-            : error.message
+          ? error.message
           : "Ocurrió un error inesperado";
 
       set((state) => {
@@ -188,7 +243,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (msgs[lastIdx]?.role === "assistant") {
           msgs[lastIdx] = {
             ...msgs[lastIdx],
-            content: errorMsg,
+            content: `Error: ${errorMsg}`,
             isStreaming: false,
             isError: true,
           };

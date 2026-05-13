@@ -82,7 +82,7 @@ export default function HomePage() {
             ref={scrollRef}
             className="flex-1 overflow-y-auto min-h-0"
           >
-            <div className="max-w-3xl mx-auto py-4">
+            <div className="max-w-4xl mx-auto py-4">
               <AnimatePresence initial={false}>
                 {messages.map((message, index) => (
                   <ChatMessage
@@ -108,10 +108,8 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Input */}
-          <div className="max-w-3xl mx-auto w-full">
-            <ChatInput />
-          </div>
+          {/* Input - Full width horizontal bar */}
+          <ChatInput />
         </div>
 
         <ContextPanel />

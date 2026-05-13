@@ -26,24 +26,24 @@ function ModelSelector() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-9 gap-1.5 px-3 text-xs rounded-lg text-muted-foreground/60 hover:text-foreground border border-border/40 hover:border-border/60 transition-all"
+          className="h-7 gap-1 px-2 text-[11px] rounded-md text-muted-foreground/60 hover:text-foreground border border-border/40 hover:border-border/60 transition-all shrink-0"
         >
           <Sparkles className="h-3 w-3 text-orange-accent" />
           <span className="font-medium">{currentModel.name}</span>
-          <ChevronDown className="h-3 w-3 opacity-40" />
+          <ChevronDown className="h-2.5 w-2.5 opacity-40" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-60 p-1 bg-popover border-border/50 rounded-xl shadow-xl"
+        className="w-56 p-1 bg-popover border-border/50 rounded-xl shadow-xl"
         align="start"
-        sideOffset={8}
+        sideOffset={6}
       >
         <div className="space-y-0.5">
           {MODELS.map((model) => (
             <button
               key={model.id}
               onClick={() => setSelectedModel(model.id)}
-              className={`flex flex-col w-full px-3 py-2 rounded-lg text-left transition-all duration-150
+              className={`flex flex-col w-full px-3 py-1.5 rounded-lg text-left transition-all duration-150
                 ${
                   selectedModel === model.id
                     ? "bg-orange-accent/8 text-orange-accent"
@@ -90,17 +90,17 @@ export function ChatInput() {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = "auto";
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
     }
   }, [input]);
 
   return (
     <div className="border-t border-border/30 bg-background/90 backdrop-blur-md">
-      <div className="flex items-center gap-2 px-4 py-3">
-        <div className="flex-1 flex items-center gap-2 bg-surface border border-border/40 rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-orange-accent/15 focus-within:border-orange-accent/25 transition-all">
+      <div className="flex items-center gap-2 px-4 py-2.5 max-w-4xl mx-auto w-full">
+        <div className="flex-1 flex items-center gap-2 bg-surface border border-border/40 rounded-xl px-3 py-1 focus-within:ring-2 focus-within:ring-orange-accent/15 focus-within:border-orange-accent/25 transition-all">
           <ModelSelector />
 
-          <div className="h-5 w-px bg-border/30 shrink-0" />
+          <div className="h-4 w-px bg-border/30 shrink-0" />
 
           <textarea
             ref={textareaRef}
@@ -110,8 +110,8 @@ export function ChatInput() {
             placeholder="Escribe tu mensaje..."
             rows={1}
             disabled={isStreaming}
-            className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none disabled:opacity-50 transition-all font-mono leading-relaxed py-1.5 min-w-0"
-            style={{ minHeight: "24px", maxHeight: "140px" }}
+            className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none disabled:opacity-50 transition-all font-mono leading-relaxed py-1 min-w-0"
+            style={{ minHeight: "22px", maxHeight: "120px" }}
           />
 
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -119,19 +119,19 @@ export function ChatInput() {
               size="icon"
               onClick={handleSend}
               disabled={!input.trim() || isStreaming}
-              className="h-8 w-8 rounded-lg bg-gradient-to-br from-orange-accent to-orange-600 hover:from-orange-accent/90 hover:to-orange-600/90 text-white shadow-md shadow-orange-accent/10 disabled:opacity-30 disabled:shadow-none transition-all shrink-0"
+              className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-accent to-orange-600 hover:from-orange-accent/90 hover:to-orange-600/90 text-white shadow-md shadow-orange-accent/10 disabled:opacity-30 disabled:shadow-none transition-all shrink-0"
             >
               {isStreaming ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
-                <Send className="h-3.5 w-3.5" />
+                <Send className="h-3 w-3" />
               )}
             </Button>
           </motion.div>
         </div>
       </div>
 
-      <div className="flex items-center justify-center px-4 pb-2">
+      <div className="flex items-center justify-center px-4 pb-1.5">
         <p className="text-[10px] text-muted-foreground/25">
           Enter para enviar · Shift+Enter nueva línea
         </p>
