@@ -222,17 +222,20 @@ async function handleWithOpenAICompatible(
 }
 
 // ─────────────────────────────────────────────
-// Strategy 2: Z.ai Proxy (codes.space-z.ai)
+// Strategy 2: Z.ai Proxy (codespace)
 // Forwards the request to a running Z.ai codespace
 // that has /api/chat running with Z.ai SDK
-// Requires: ZAI_PROXY_URL env var (e.g. https://codes.space-z.ai)
+// Requires: ZAI_PROXY_URL env var
+// Example: https://c-xxxxxx.codes.space-z.ai
 // ─────────────────────────────────────────────
 async function handleWithZaiProxy(
   apiMessages: { role: string; content: string }[],
   model: string,
   proxyUrl: string
 ): Promise<Response> {
-  const url = `${proxyUrl}/api/chat`;
+  // Normalize URL: remove trailing slash
+  const baseUrl = proxyUrl.replace(/\/+$/, "");
+  const url = `${baseUrl}/api/chat`;
 
   console.log("[Chat] Proxying to:", url);
 
@@ -253,7 +256,6 @@ async function handleWithZaiProxy(
   }
 
   // The proxy returns the same SSE format we use, so we can pipe it directly
-  // But we parse and re-emit to ensure consistency
   const contentType = upstreamResponse.headers.get("content-type") || "";
 
   // If SSE, pipe through
@@ -340,6 +342,7 @@ async function handleWithZaiProxy(
 // ─────────────────────────────────────────────
 // Strategy 3: Z.ai SDK (works inside Z.ai codespace)
 // No env vars needed - SDK handles auth internally
+// Uses streaming for better UX
 // ─────────────────────────────────────────────
 async function handleWithZaiSDK(
   apiMessages: { role: string; content: string }[],
@@ -348,6 +351,82 @@ async function handleWithZaiSDK(
   const ZAI = (await import("z-ai-web-dev-sdk")).default;
   const zai = await ZAI.create();
 
+  // Try streaming first for better UX
+  try {
+    const streamBody = await zai.chat.completions.create({
+      messages: apiMessages as { role: "system" | "user" | "assistant"; content: string }[],
+      stream: true,
+    });
+
+    // streamBody is a ReadableStream in web API format
+    if (streamBody && typeof streamBody === "object" && "getReader" in streamBody) {
+      return createSSEStream(async (controller, encoder) => {
+        const reader = (streamBody as ReadableStream).getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let totalContent = "";
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let lastModel = model;
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed === "data: [DONE]") continue;
+              if (!trimmed.startsWith("data: ")) continue;
+
+              try {
+                const json = JSON.parse(trimmed.slice(6));
+                const delta = json.choices?.[0]?.delta?.content;
+                if (delta) {
+                  totalContent += delta;
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ type: "delta", content: delta })}\n\n`
+                    )
+                  );
+                }
+                if (json.model) lastModel = json.model;
+                if (json.usage) {
+                  promptTokens = json.usage.prompt_tokens || 0;
+                  completionTokens = json.usage.completion_tokens || 0;
+                }
+              } catch {
+                // Skip malformed JSON chunks
+              }
+            }
+          }
+
+          sendSSEDone(controller, encoder, totalContent, lastModel, promptTokens, completionTokens);
+        } catch (error) {
+          console.error("[SDK Stream] Error:", error);
+          // If streaming failed, send whatever we have
+          if (totalContent) {
+            sendSSEDone(controller, encoder, totalContent, lastModel, promptTokens, completionTokens);
+          } else {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "error", error: "Stream interrumpido" })}\n\n`
+              )
+            );
+            controller.close();
+          }
+        }
+      });
+    }
+  } catch (streamError) {
+    console.log("[SDK] Streaming not available, falling back to non-streaming:", streamError);
+  }
+
+  // Fallback: non-streaming
   const completion = await zai.chat.completions.create({
     messages: apiMessages as { role: "system" | "user" | "assistant"; content: string }[],
     stream: false,
@@ -459,7 +538,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "No se pudo conectar con ninguna API. Configura ANTHROPIC_API_KEY, API_BASE_URL+API_KEY, o ZAI_PROXY_URL en tu plataforma de deploy.",
+          "No se pudo conectar con ninguna API. Configura una de estas variables de entorno en Vercel: ZAI_PROXY_URL (ej: https://TU-CODESPACE.codes.space-z.ai), ANTHROPIC_API_KEY, o API_BASE_URL+API_KEY.",
       },
       { status: 500 }
     );
