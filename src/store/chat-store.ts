@@ -29,9 +29,9 @@ export interface ModelOption {
 
 // Models that work with Z.ai proxy/SDK (no API key needed)
 export const MODELS: ModelOption[] = [
-  { id: "glm-4-plus", name: "GLM-4 Plus", description: "Mejor equilibrio entre velocidad e inteligencia" },
-  { id: "glm-4-flash", name: "GLM-4 Flash", description: "Respuestas ultrarrápidas" },
-  { id: "glm-4-long", name: "GLM-4 Long", description: "Contexto largo hasta 128K tokens" },
+  { id: "glm-4-plus", name: "HJ-4 Plus", description: "Mejor equilibrio entre velocidad e inteligencia" },
+  { id: "glm-4-flash", name: "HJ-4 Flash", description: "Respuestas ultrarrápidas" },
+  { id: "glm-4-long", name: "HJ-4 Long", description: "Contexto largo hasta 128K tokens" },
 ];
 
 export interface SessionContext {
@@ -66,23 +66,19 @@ const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now(
 const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
-  content: `Hola, soy **Hache IA**, tu asistente de programación con IA.
+  content: `Hola, soy **Hache IA**.
 
-Puedo ayudarte con:
+Tu asistente inteligente hecho por HacheJota
 
-- **Escribir código** — Generar, refactorizar o depurar en cualquier lenguaje
-- **Operaciones de archivos** — Leer, escribir y navegar archivos del proyecto
-- **Buscar código** — Encontrar patrones, rastrear referencias y entender codebases
-- **Ejecutar comandos** — Correr comandos y analizar resultados
-- **Arquitectura** — Diseñar sistemas, planificar funciones y revisar decisiones
+Puedo ayudarte a programar, responder preguntas, crear contenido, explicar temas, resolver problemas y mucho más.
 
-Prueba preguntarme algo como:
-- *"Ayúdame a implementar un endpoint REST"*
-- *"Explica el flujo de autenticación en este proyecto"*
-- *"Encuentra y arregla el bug en mi componente React"*
-- *"Escribe tests unitarios para mis funciones"*
+- **Código y desarrollo**
+- **Ideas y creatividad**
+- **Información y ayuda diaria**
+- **Depuración y automatización**
+- **Conversación natural con IA**
 
-¿Qué te gustaría trabajar hoy?`,
+Solo escribe lo que necesites.`,
   timestamp: Date.now(),
 };
 
