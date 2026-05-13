@@ -239,6 +239,9 @@ async function handleWithZaiProxy(
 
   console.log("[Chat] Proxying to:", url);
 
+  // Use non-streaming mode for the proxy request to avoid tunnel timeouts.
+  // The proxy server on the codespace calls Z.ai API and returns the complete response.
+  // We then stream it to the client in SSE format.
   const upstreamResponse = await fetch(url, {
     method: "POST",
     headers: {
@@ -247,6 +250,7 @@ async function handleWithZaiProxy(
     body: JSON.stringify({
       messages: apiMessages,
       model,
+      stream: false, // Non-streaming to avoid tunnel timeouts
     }),
   });
 
@@ -255,10 +259,39 @@ async function handleWithZaiProxy(
     throw new Error(`Proxy request failed (${upstreamResponse.status}): ${errorText}`);
   }
 
-  // The proxy returns the same SSE format we use, so we can pipe it directly
   const contentType = upstreamResponse.headers.get("content-type") || "";
 
-  // If SSE, pipe through
+  // If JSON response (non-streaming from proxy - this is the expected path)
+  if (contentType.includes("application/json")) {
+    const data = await upstreamResponse.json();
+    const content = data.choices?.[0]?.message?.content || data.content || "";
+
+    if (!content) {
+      throw new Error("Proxy: respuesta vacía");
+    }
+
+    const usage = data.usage;
+    const promptTokens = usage?.prompt_tokens || 0;
+    const completionTokens = usage?.completion_tokens || 0;
+    const responseModel = data.model || model;
+
+    // Stream the complete response to the client in SSE format
+    // Split into chunks for a more natural typing effect
+    return createSSEStream(async (controller, encoder) => {
+      // Split content into chunks of ~20 chars for typing effect
+      const chunks = content.match(/.{1,20}|.+$/g) || [content];
+      for (const chunk of chunks) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "delta", content: chunk })}\n\n`
+          )
+        );
+      }
+      sendSSEDone(controller, encoder, content, responseModel, promptTokens, completionTokens);
+    });
+  }
+
+  // If SSE response (streaming from proxy - fallback)
   if (contentType.includes("text/event-stream") && upstreamResponse.body) {
     return createSSEStream(async (controller, encoder) => {
       const reader = upstreamResponse.body!.getReader();
@@ -287,7 +320,6 @@ async function handleWithZaiProxy(
 
               try {
                 const parsed = JSON.parse(dataStr);
-
                 if (parsed.type === "delta" && parsed.content) {
                   totalContent += parsed.content;
                   controller.enqueue(
@@ -298,45 +330,28 @@ async function handleWithZaiProxy(
                 } else if (parsed.type === "done") {
                   if (parsed.usage) lastUsage = parsed.usage;
                   if (parsed.model) lastModel = parsed.model;
-                } else if (parsed.type === "error") {
-                  throw new Error(parsed.error || "Error del proxy");
                 }
-              } catch (e) {
-                if (e instanceof Error && !e.message.includes("malformed")) throw e;
+              } catch {
+                // Skip
               }
             }
           }
         }
-
         sendSSEDone(controller, encoder, totalContent, lastModel, lastUsage.promptTokens, lastUsage.completionTokens);
       } catch (error) {
         console.error("[Proxy] Stream error:", error);
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: "error", error: error instanceof Error ? error.message : "Proxy stream interrumpido" })}\n\n`
-          )
-        );
-        controller.close();
+        if (totalContent) {
+          sendSSEDone(controller, encoder, totalContent, lastModel, lastUsage.promptTokens, lastUsage.completionTokens);
+        } else {
+          controller.close();
+        }
       }
     });
   }
 
-  // If JSON response (non-streaming from proxy)
-  const data = await upstreamResponse.json();
-  const content = data.content || data.choices?.[0]?.message?.content || "";
-
-  if (!content) {
-    throw new Error("Proxy: respuesta vacía");
-  }
-
-  return createSSEStream(async (controller, encoder) => {
-    controller.enqueue(
-      encoder.encode(
-        `data: ${JSON.stringify({ type: "delta", content })}\n\n`
-      )
-    );
-    sendSSEDone(controller, encoder, content, data.model || model, 0, 0);
-  });
+  // Unknown content type
+  const text = await upstreamResponse.text();
+  throw new Error(`Proxy: respuesta inesperada (${contentType}): ${text.slice(0, 200)}`);
 }
 
 // ─────────────────────────────────────────────
