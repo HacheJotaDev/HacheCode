@@ -41,8 +41,8 @@ function createSSEStream(
   });
 }
 
-// Helper: Send delta + done + [DONE] events
-function sendSSEEvents(
+// Helper: Send done + [DONE] events
+function sendSSEDone(
   controller: ReadableStreamDefaultController,
   encoder: TextEncoder,
   totalContent: string,
@@ -70,8 +70,7 @@ function sendSSEEvents(
 
 // ─────────────────────────────────────────────
 // Strategy 0: Anthropic Claude API
-// Uses @anthropic-ai/sdk with streaming
-// Requires: ANTHROPIC_API_KEY env var
+// Requires: ANTHROPIC_API_KEY
 // ─────────────────────────────────────────────
 async function handleWithAnthropic(
   apiMessages: { role: string; content: string }[],
@@ -82,7 +81,6 @@ async function handleWithAnthropic(
 
   const client = new Anthropic({ apiKey });
 
-  // Extract system prompt and convert messages to Anthropic format
   const systemMessage = apiMessages.find((m) => m.role === "system")?.content || "";
   const chatMessages = apiMessages
     .filter((m) => m.role !== "system")
@@ -126,7 +124,7 @@ async function handleWithAnthropic(
         }
       }
 
-      sendSSEEvents(controller, encoder, totalContent, model, inputTokens, outputTokens);
+      sendSSEDone(controller, encoder, totalContent, model, inputTokens, outputTokens);
     } catch (error) {
       console.error("[Anthropic] Stream error:", error);
       controller.enqueue(
@@ -141,34 +139,25 @@ async function handleWithAnthropic(
 
 // ─────────────────────────────────────────────
 // Strategy 1: OpenAI-compatible API
-// Works with: OpenAI, ChatGLM, Groq, Together, etc.
-// Requires: API_BASE_URL + API_KEY env vars
+// Requires: API_BASE_URL + API_KEY
 // ─────────────────────────────────────────────
 async function handleWithOpenAICompatible(
   apiMessages: { role: string; content: string }[],
-  config: {
-    baseUrl: string;
-    apiKey: string;
-    model: string;
-  }
+  config: { baseUrl: string; apiKey: string; model: string }
 ): Promise<Response> {
   const url = `${config.baseUrl}/chat/completions`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${config.apiKey}`,
-  };
-
-  const body = JSON.stringify({
-    model: config.model,
-    messages: apiMessages,
-    stream: true,
-  });
-
   const upstreamResponse = await fetch(url, {
     method: "POST",
-    headers,
-    body,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: apiMessages,
+      stream: true,
+    }),
   });
 
   if (!upstreamResponse.ok) {
@@ -209,7 +198,6 @@ async function handleWithOpenAICompatible(
                 )
               );
             }
-
             if (json.usage) {
               promptTokens = json.usage.prompt_tokens || 0;
               completionTokens = json.usage.completion_tokens || 0;
@@ -220,7 +208,7 @@ async function handleWithOpenAICompatible(
         }
       }
 
-      sendSSEEvents(controller, encoder, totalContent, config.model, promptTokens, completionTokens);
+      sendSSEDone(controller, encoder, totalContent, config.model, promptTokens, completionTokens);
     } catch (error) {
       console.error("[OpenAI] Stream error:", error);
       controller.enqueue(
@@ -234,7 +222,123 @@ async function handleWithOpenAICompatible(
 }
 
 // ─────────────────────────────────────────────
-// Strategy 2: Z.ai SDK (works inside Z.ai codespace)
+// Strategy 2: Z.ai Proxy (codes.space-z.ai)
+// Forwards the request to a running Z.ai codespace
+// that has /api/chat running with Z.ai SDK
+// Requires: ZAI_PROXY_URL env var (e.g. https://codes.space-z.ai)
+// ─────────────────────────────────────────────
+async function handleWithZaiProxy(
+  apiMessages: { role: string; content: string }[],
+  model: string,
+  proxyUrl: string
+): Promise<Response> {
+  const url = `${proxyUrl}/api/chat`;
+
+  console.log("[Chat] Proxying to:", url);
+
+  const upstreamResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messages: apiMessages,
+      model,
+    }),
+  });
+
+  if (!upstreamResponse.ok) {
+    const errorText = await upstreamResponse.text().catch(() => "Unknown error");
+    throw new Error(`Proxy request failed (${upstreamResponse.status}): ${errorText}`);
+  }
+
+  // The proxy returns the same SSE format we use, so we can pipe it directly
+  // But we parse and re-emit to ensure consistency
+  const contentType = upstreamResponse.headers.get("content-type") || "";
+
+  // If SSE, pipe through
+  if (contentType.includes("text/event-stream") && upstreamResponse.body) {
+    return createSSEStream(async (controller, encoder) => {
+      const reader = upstreamResponse.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let totalContent = "";
+      let lastUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+      let lastModel = model;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+
+          for (const part of parts) {
+            const lines = part.trim().split("\n");
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith("data: ")) continue;
+              const dataStr = trimmed.slice(6);
+              if (dataStr === "[DONE]") continue;
+
+              try {
+                const parsed = JSON.parse(dataStr);
+
+                if (parsed.type === "delta" && parsed.content) {
+                  totalContent += parsed.content;
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ type: "delta", content: parsed.content })}\n\n`
+                    )
+                  );
+                } else if (parsed.type === "done") {
+                  if (parsed.usage) lastUsage = parsed.usage;
+                  if (parsed.model) lastModel = parsed.model;
+                } else if (parsed.type === "error") {
+                  throw new Error(parsed.error || "Error del proxy");
+                }
+              } catch (e) {
+                if (e instanceof Error && !e.message.includes("malformed")) throw e;
+              }
+            }
+          }
+        }
+
+        sendSSEDone(controller, encoder, totalContent, lastModel, lastUsage.promptTokens, lastUsage.completionTokens);
+      } catch (error) {
+        console.error("[Proxy] Stream error:", error);
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "error", error: error instanceof Error ? error.message : "Proxy stream interrumpido" })}\n\n`
+          )
+        );
+        controller.close();
+      }
+    });
+  }
+
+  // If JSON response (non-streaming from proxy)
+  const data = await upstreamResponse.json();
+  const content = data.content || data.choices?.[0]?.message?.content || "";
+
+  if (!content) {
+    throw new Error("Proxy: respuesta vacía");
+  }
+
+  return createSSEStream(async (controller, encoder) => {
+    controller.enqueue(
+      encoder.encode(
+        `data: ${JSON.stringify({ type: "delta", content })}\n\n`
+      )
+    );
+    sendSSEDone(controller, encoder, content, data.model || model, 0, 0);
+  });
+}
+
+// ─────────────────────────────────────────────
+// Strategy 3: Z.ai SDK (works inside Z.ai codespace)
 // No env vars needed - SDK handles auth internally
 // ─────────────────────────────────────────────
 async function handleWithZaiSDK(
@@ -260,21 +364,12 @@ async function handleWithZaiSDK(
   const completionTokens = usage?.completion_tokens || 0;
 
   return createSSEStream(async (controller, encoder) => {
-    // Send full content as one delta (non-streaming SDK)
     controller.enqueue(
       encoder.encode(
         `data: ${JSON.stringify({ type: "delta", content })}\n\n`
       )
     );
-
-    sendSSEEvents(
-      controller,
-      encoder,
-      content,
-      completion.model || model,
-      promptTokens,
-      completionTokens
-    );
+    sendSSEDone(controller, encoder, content, completion.model || model, promptTokens, completionTokens);
   });
 }
 
@@ -286,7 +381,8 @@ function isAnthropicModel(model: string): boolean {
 }
 
 // ─────────────────────────────────────────────
-// Main POST handler with 3-strategy fallback
+// Main POST handler with 4-strategy fallback
+// Priority: Anthropic > OpenAI > Z.ai Proxy > Z.ai SDK
 // ─────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
@@ -315,12 +411,11 @@ export async function POST(request: Request) {
     // ── Strategy 0: Anthropic Claude API ──
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     if (anthropicKey && isAnthropicModel(apiModel)) {
-      console.log("[Chat] Using Anthropic Claude API, model:", apiModel);
+      console.log("[Chat] Strategy 0: Anthropic Claude API, model:", apiModel);
       try {
         return await handleWithAnthropic(apiMessages, apiModel);
       } catch (apiError) {
-        console.error("[Chat] Anthropic API failed:", apiError);
-        // Fall through to next strategy
+        console.error("[Chat] Anthropic failed:", apiError);
       }
     }
 
@@ -329,7 +424,7 @@ export async function POST(request: Request) {
     const apiKey = process.env.API_KEY;
 
     if (baseUrl && apiKey) {
-      console.log("[Chat] Using OpenAI-compatible API:", baseUrl);
+      console.log("[Chat] Strategy 1: OpenAI-compatible API:", baseUrl);
       try {
         return await handleWithOpenAICompatible(apiMessages, {
           baseUrl,
@@ -338,24 +433,33 @@ export async function POST(request: Request) {
         });
       } catch (apiError) {
         console.error("[Chat] OpenAI API failed:", apiError);
-        // Fall through to SDK
       }
     }
 
-    // ── Strategy 2: Z.ai SDK (codespace) ──
+    // ── Strategy 2: Z.ai Proxy (for Vercel/Railway) ──
+    const proxyUrl = process.env.ZAI_PROXY_URL;
+    if (proxyUrl) {
+      console.log("[Chat] Strategy 2: Z.ai Proxy:", proxyUrl);
+      try {
+        return await handleWithZaiProxy(apiMessages, apiModel, proxyUrl);
+      } catch (proxyError) {
+        console.error("[Chat] Z.ai Proxy failed:", proxyError);
+      }
+    }
+
+    // ── Strategy 3: Z.ai SDK (codespace direct) ──
     try {
-      console.log("[Chat] Trying Z.ai SDK fallback...");
+      console.log("[Chat] Strategy 3: Z.ai SDK fallback");
       return await handleWithZaiSDK(apiMessages, apiModel);
     } catch (sdkError) {
       console.error("[Chat] Z.ai SDK failed:", sdkError);
-      // Fall through to error
     }
 
     // ── No strategy worked ──
     return Response.json(
       {
         error:
-          "No se pudo conectar con ninguna API. Configura ANTHROPIC_API_KEY (Claude), API_BASE_URL+API_KEY (OpenAI), o ejecuta dentro de Z.ai.",
+          "No se pudo conectar con ninguna API. Configura ANTHROPIC_API_KEY, API_BASE_URL+API_KEY, o ZAI_PROXY_URL en tu plataforma de deploy.",
       },
       { status: 500 }
     );
