@@ -553,8 +553,8 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "No se pudo conectar con ninguna API. Configura una de estas variables de entorno en Vercel: ZAI_PROXY_URL (ej: https://TU-CODESPACE.codes.space-z.ai), ANTHROPIC_API_KEY, o API_BASE_URL+API_KEY.",
-      },
+          "No se pudo conectar con HJ-API-IA",
+    
       { status: 500 }
     );
   } catch (error: unknown) {
