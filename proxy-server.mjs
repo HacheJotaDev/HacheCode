@@ -547,7 +547,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // ── Start server ──
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '::', () => {
   log('INFO', '═══════════════════════════════════════════════════');
   log('INFO', '  Hache IA Proxy Server v2.0');
   log('INFO', `  Port: ${PORT}`);
