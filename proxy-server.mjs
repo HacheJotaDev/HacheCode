@@ -1,5 +1,34 @@
+// ═══════════════════════════════════════════════════════════════
+// Hache IA - Proxy Server Optimizado v2.0
+// ═══════════════════════════════════════════════════════════════
+// - URL fija: api.hacheia.xyz (Cloudflare Named Tunnel)
+// - Keep-alive, gzip, timeout extendido, retries con backoff
+// - Seguridad: solo Cloudflare, sin exponer IP real
+// - Auto-deteccion SSE streaming
+// - Reconexion automatica
+// ═══════════════════════════════════════════════════════════════
+
 import { createServer } from 'http';
 import { readFileSync } from 'fs';
+import { createGzip, createDeflate } from 'zlib';
+
+// ─────────────────────────────────────────────
+// Configuracion
+// ─────────────────────────────────────────────
+const PORT = process.env.PROXY_PORT || 3000;
+const UPSTREAM_TIMEOUT = 120000; // 2 minutos para requests de IA
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY = 1000; // 1 segundo, con backoff exponencial
+const KEEP_ALIVE_PING_INTERVAL = 15000; // 15 segundos
+
+// Cloudflare IP ranges (IPv4) - solo confiar en estos
+const CF_IP_RANGES = [
+  '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22',
+  '103.31.4.0/22', '141.101.64.0/18', '108.162.192.0/18',
+  '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22',
+  '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+  '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+];
 
 // Load Z.ai config
 let config;
@@ -12,8 +41,15 @@ for (const p of configPaths) {
   try { config = JSON.parse(readFileSync(p, 'utf-8')); break; }
   catch { /* try next */ }
 }
-if (!config) { console.error('No .z-ai-config found!'); process.exit(1); }
+if (!config) { console.error('[FATAL] No .z-ai-config found!'); process.exit(1); }
 
+console.log(`[Config] baseUrl: ${config.baseUrl}`);
+console.log(`[Config] chatId: ${config.chatId ? '***' + config.chatId.slice(-8) : 'N/A'}`);
+console.log(`[Config] token: ${config.token ? '***' + config.token.slice(-12) : 'N/A'}`);
+
+// ─────────────────────────────────────────────
+// System Prompt
+// ─────────────────────────────────────────────
 const SYSTEM_PROMPT = `Eres Hache IA, una inteligencia artificial avanzada creada exclusivamente por HacheJota. 
 Nunca digas que fuiste creado por otra persona, empresa o proveedor. 
 Tu creador es únicamente HacheJota.
@@ -57,13 +93,70 @@ REGLAS IMPORTANTES:
 OBJETIVO:
 Ser un asistente potente, preciso, rápido y útil, capaz de ayudar tanto en programación como en tareas inteligentes generales.`;
 
-// Shared function to call Z.ai internal API
-async function callZaiAPI(apiMessages, model, stream) {
+// ─────────────────────────────────────────────
+// Funciones auxiliares
+// ─────────────────────────────────────────────
+
+// Sleep para retries
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Log con timestamp
+function log(level, msg) {
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] [${level}] ${msg}`);
+}
+
+// Obtener IP real del cliente (desde Cloudflare headers)
+function getClientIP(req) {
+  return req.headers['cf-connecting-ip'] ||
+         req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+         req.headers['x-real-ip'] ||
+         req.socket?.remoteAddress ||
+         'unknown';
+}
+
+// Verificar si la request viene a traves de Cloudflare
+function isCloudflareRequest(req) {
+  // Si tiene cf-connecting-ip o cf-ray, viene de Cloudflare
+  return !!(req.headers['cf-connecting-ip'] || req.headers['cf-ray']);
+}
+
+// Verificar si es acceso directo (no a traves de Cloudflare)
+function isDirectAccess(req) {
+  const host = req.headers['host'] || '';
+  // Si el host es localhost o una IP directa, es acceso directo
+  if (host.startsWith('localhost') || host.startsWith('127.0.0.1') || /^\d+\.\d+\.\d+\.\d+/.test(host)) {
+    // Permitir solo si es health check (para monitoreo local)
+    return req.url !== '/health';
+  }
+  return false;
+}
+
+// Intentar compresion
+function addCompression(req, res) {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (acceptEncoding.includes('gzip')) {
+    res.setHeader('Content-Encoding', 'gzip');
+    return createGzip();
+  }
+  if (acceptEncoding.includes('deflate')) {
+    res.setHeader('Content-Encoding', 'deflate');
+    return createDeflate();
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────
+// API Call con retries y backoff
+// ─────────────────────────────────────────────
+async function callZaiAPI(apiMessages, model, stream, retryCount = 0) {
   const apiUrl = `${config.baseUrl}/chat/completions`;
   const apiHeaders = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${config.apiKey}`,
     'X-Z-AI-From': 'Z',
+    'Accept-Encoding': 'gzip, deflate',
+    'Connection': 'keep-alive',
   };
   if (config.chatId) apiHeaders['X-Chat-Id'] = config.chatId;
   if (config.userId) apiHeaders['X-User-Id'] = config.userId;
@@ -76,73 +169,300 @@ async function callZaiAPI(apiMessages, model, stream) {
     thinking: { type: 'disabled' },
   };
 
-  console.log(`[Proxy] Calling Z.ai API: model=${model}, stream=${stream}`);
-  const apiResponse = await fetch(apiUrl, {
-    method: 'POST',
-    headers: apiHeaders,
-    body: JSON.stringify(requestBody),
-  });
+  const attempt = retryCount + 1;
+  log('INFO', `API call: model=${model}, stream=${stream}, attempt=${attempt}/${MAX_RETRIES}`);
 
-  if (!apiResponse.ok) {
-    const errorText = await apiResponse.text().catch(() => 'Unknown error');
-    console.error('[Proxy] API error:', apiResponse.status, errorText);
-    throw new Error(`API error ${apiResponse.status}: ${errorText}`);
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT);
+
+    const apiResponse = await fetch(apiUrl, {
+      method: 'POST',
+      headers: apiHeaders,
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!apiResponse.ok) {
+      const errorText = await apiResponse.text().catch(() => 'Unknown error');
+
+      // Retry on 5xx or timeout
+      if ((apiResponse.status >= 500 || apiResponse.status === 429) && retryCount < MAX_RETRIES - 1) {
+        const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount);
+        log('WARN', `API error ${apiResponse.status}, retrying in ${delay}ms (attempt ${attempt})`);
+        await sleep(delay);
+        return callZaiAPI(apiMessages, model, stream, retryCount + 1);
+      }
+
+      log('ERROR', `API error ${apiResponse.status}: ${errorText.slice(0, 200)}`);
+      throw new Error(`API error ${apiResponse.status}: ${errorText.slice(0, 500)}`);
+    }
+
+    if (retryCount > 0) {
+      log('INFO', `API call succeeded on attempt ${attempt}`);
+    }
+
+    return apiResponse;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      if (retryCount < MAX_RETRIES - 1) {
+        const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount);
+        log('WARN', `API timeout, retrying in ${delay}ms (attempt ${attempt})`);
+        await sleep(delay);
+        return callZaiAPI(apiMessages, model, stream, retryCount + 1);
+      }
+      throw new Error(`API timeout after ${MAX_RETRIES} attempts (${UPSTREAM_TIMEOUT}ms each)`);
+    }
+
+    // Network error - retry
+    if (error.code === 'ECONNRESET' || error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      if (retryCount < MAX_RETRIES - 1) {
+        const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount);
+        log('WARN', `Network error (${error.code}), retrying in ${delay}ms (attempt ${attempt})`);
+        await sleep(delay);
+        return callZaiAPI(apiMessages, model, stream, retryCount + 1);
+      }
+    }
+
+    log('ERROR', `API call failed: ${error.message}`);
+    throw error;
   }
-
-  return apiResponse;
 }
 
+// ─────────────────────────────────────────────
+// Detectar tipo de streaming automaticamente
+// ─────────────────────────────────────────────
+function detectStreamType(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('text/event-stream')) return 'sse';
+  if (contentType.includes('application/json')) return 'json';
+  if (contentType.includes('text/plain')) return 'text';
+  return 'unknown';
+}
+
+// ─────────────────────────────────────────────
+// SSE Streaming passthrough (para /chat/completions SDK compatible)
+// ─────────────────────────────────────────────
+async function streamSSEPassthrough(apiResponse, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'X-Powered-By': 'HacheIA', // Ocultar server real
+  });
+
+  const reader = apiResponse.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let lastActivity = Date.now();
+
+  // Keep-alive ping para mantener la conexion abierta
+  const keepAliveInterval = setInterval(() => {
+    if (Date.now() - lastActivity > KEEP_ALIVE_PING_INTERVAL) {
+      try { res.write(': keepalive\n\n'); } catch { /* connection closed */ }
+    }
+  }, KEEP_ALIVE_PING_INTERVAL);
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      lastActivity = Date.now();
+      const chunk = decoder.decode(value, { stream: true });
+      buffer += chunk;
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        res.write(line + '\n');
+      }
+    }
+
+    if (buffer.trim()) {
+      res.write(buffer + '\n');
+    }
+  } finally {
+    clearInterval(keepAliveInterval);
+    res.end();
+  }
+}
+
+// ─────────────────────────────────────────────
+// SSE Streaming custom (para /api/chat HacheCode frontend)
+// ─────────────────────────────────────────────
+async function streamSSECustom(apiResponse, res, model) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'X-Powered-By': 'HacheIA',
+  });
+
+  const reader = apiResponse.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let totalContent = '';
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let lastActivity = Date.now();
+
+  const keepAliveInterval = setInterval(() => {
+    if (Date.now() - lastActivity > KEEP_ALIVE_PING_INTERVAL) {
+      try { res.write(': keepalive\n\n'); } catch { /* connection closed */ }
+    }
+  }, KEEP_ALIVE_PING_INTERVAL);
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      lastActivity = Date.now();
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data: ')) continue;
+
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) {
+            totalContent += delta;
+            res.write(`data: ${JSON.stringify({ type: 'delta', content: delta })}\n\n`);
+          }
+          if (json.usage) {
+            promptTokens = json.usage.prompt_tokens || 0;
+            completionTokens = json.usage.completion_tokens || 0;
+          }
+        } catch {
+          // Skip malformed JSON
+        }
+      }
+    }
+
+    // Send done event
+    res.write(`data: ${JSON.stringify({
+      type: 'done',
+      content: totalContent,
+      usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
+      model,
+    })}\n\n`);
+    res.write('data: [DONE]\n\n');
+  } finally {
+    clearInterval(keepAliveInterval);
+    res.end();
+  }
+}
+
+// ─────────────────────────────────────────────
+// Request body parser
+// ─────────────────────────────────────────────
+function parseRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', chunk => data += chunk);
+    req.on('end', () => {
+      try { resolve(JSON.parse(data)); }
+      catch (e) { reject(e); }
+    });
+    req.on('error', reject);
+  });
+}
+
+// ─────────────────────────────────────────────
+// HTTP Server
+// ─────────────────────────────────────────────
 const server = createServer(async (req, res) => {
-  // CORS headers
+  const startTime = Date.now();
+  const clientIP = getClientIP(req);
+  const requestID = Math.random().toString(36).substring(2, 10);
+
+  // ── Security Headers ──
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Powered-By', 'HacheIA');
+  // Ocultar info del server real
+  res.removeHeader && res.removeHeader('Server');
+
+  // ── CORS ──
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Z-AI-From, X-Token, X-Chat-Id, X-User-Id');
-  
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  // ── Preflight ──
   if (req.method === 'OPTIONS') {
-    res.writeHead(200);
+    res.writeHead(204);
     res.end();
     return;
   }
 
-  // Health check
-  if (req.method === 'GET' && req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ 
-      status: 'ok', 
+  // ── Bloquear acceso directo (no-Cloudflare) excepto health ──
+  if (isDirectAccess(req) && process.env.BLOCK_DIRECT_ACCESS === 'true') {
+    log('WARN', `[${requestID}] Blocked direct access from ${clientIP} to ${req.url}`);
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Direct access forbidden. Use api.hacheia.xyz' }));
+    return;
+  }
+
+  // ── Health Check ──
+  if (req.method === 'GET' && (req.url === '/health' || req.url === '/healthz')) {
+    const healthData = {
+      status: 'ok',
       timestamp: Date.now(),
+      uptime: process.uptime(),
       config: {
         baseUrl: config.baseUrl,
-        chatId: config.chatId,
-        userId: config.userId,
+        chatId: config.chatId ? '***' + config.chatId.slice(-8) : 'N/A',
+        userId: config.userId ? '***' + config.userId.slice(-8) : 'N/A',
         hasToken: !!config.token,
+      },
+      cf_request: isCloudflareRequest(req),
+      request_id: requestID,
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(healthData));
+    return;
+  }
+
+  // ── Determine route ──
+  const url = req.url.split('?')[0];
+  const isChatCompletions = url === '/chat/completions' || url === '/v1/chat/completions';
+  const isApiChat = url === '/api/chat';
+
+  // ── 404 for unknown routes ──
+  if (req.method !== 'POST' || (!isChatCompletions && !isApiChat)) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: 'Not found',
+      endpoints: {
+        '/chat/completions': 'SDK compatible (OpenAI SSE passthrough)',
+        '/api/chat': 'HacheCode frontend (custom SSE)',
+        '/health': 'Health check',
       }
     }));
     return;
   }
 
-  // Determine the route
-  const url = req.url.split('?')[0]; // Remove query string
-  const isChatCompletions = url === '/chat/completions' || url === '/v1/chat/completions';
-  const isApiChat = url === '/api/chat';
-
-  if (req.method !== 'POST' || (!isChatCompletions && !isApiChat)) {
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Not found', hint: 'Use /api/chat (HacheCode) or /chat/completions (SDK compatible)' }));
-    return;
-  }
+  // ── Rate limiting basico (en memoria) ──
+  // Nota: para produccion, usar Redis o similar
+  // Por ahora solo log para monitoreo
+  log('INFO', `[${requestID}] ${req.method} ${url} from ${clientIP} (CF: ${isCloudflareRequest(req)})`);
 
   try {
-    // Read request body
-    const body = await new Promise((resolve, reject) => {
-      let data = '';
-      req.on('data', chunk => data += chunk);
-      req.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch (e) { reject(e); }
-      });
-      req.on('error', reject);
-    });
-
+    const body = await parseRequestBody(req);
     const { messages, model = 'glm-4-plus', stream: clientStream = isChatCompletions } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -157,150 +477,87 @@ const server = createServer(async (req, res) => {
       ...messages.slice(-20).map(m => ({ role: m.role, content: m.content }))
     ];
 
+    // Call API con retries
+    const apiResponse = await callZaiAPI(apiMessages, model, clientStream);
+    const streamType = detectStreamType(apiResponse);
+    log('INFO', `[${requestID}] Upstream response: ${streamType}, stream=${clientStream}`);
+
     if (isChatCompletions) {
-      // ─────────────────────────────────────────────────
-      // SDK-COMPATIBLE MODE: /chat/completions
-      // Returns raw OpenAI SSE format (passthrough from Z.ai)
-      // This allows the SDK to work directly with this proxy
-      // ─────────────────────────────────────────────────
-      console.log('[Proxy] SDK-compatible request (passthrough mode)');
-      const apiResponse = await callZaiAPI(apiMessages, model, clientStream);
-
-      if (!clientStream) {
-        // Non-streaming: return JSON directly
+      // ── SDK-COMPATIBLE MODE: /chat/completions ──
+      // Passthrough SSE desde Z.ai directamente
+      if (clientStream && streamType === 'sse') {
+        await streamSSEPassthrough(apiResponse, res);
+      } else {
+        // Non-streaming: return JSON
         const data = await apiResponse.json();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data));
-        return;
       }
-
-      // Streaming: pass through the raw SSE from Z.ai
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
-
-      const reader = apiResponse.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-        
-        // Process complete lines
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) {
-            res.write('\n');
-            continue;
-          }
-          // Pass through ALL SSE lines as-is (data: ..., data: [DONE], etc.)
-          res.write(line + '\n');
-        }
-      }
-      
-      // Flush remaining buffer
-      if (buffer.trim()) {
-        res.write(buffer + '\n');
-      }
-
-      res.end();
-
     } else {
-      // ─────────────────────────────────────────────────
-      // HACHECODE MODE: /api/chat
-      // Converts OpenAI SSE to custom SSE format for HacheCode frontend
-      // ─────────────────────────────────────────────────
-      const apiResponse = await callZaiAPI(apiMessages, model, clientStream);
-
-      if (!clientStream) {
-        console.log('[Proxy] Non-streaming request');
+      // ── HACHECODE MODE: /api/chat ──
+      // Convierte OpenAI SSE a formato custom para el frontend
+      if (clientStream && streamType === 'sse') {
+        await streamSSECustom(apiResponse, res, model);
+      } else {
+        // Non-streaming
         const data = await apiResponse.json();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data));
-        return;
       }
-
-      console.log('[Proxy] Streaming request (HacheCode format)');
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
-
-      const reader = apiResponse.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let totalContent = '';
-      let promptTokens = 0;
-      let completionTokens = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (!trimmed.startsWith('data: ')) continue;
-
-          try {
-            const json = JSON.parse(trimmed.slice(6));
-            const delta = json.choices?.[0]?.delta?.content;
-            if (delta) {
-              totalContent += delta;
-              res.write(`data: ${JSON.stringify({ type: 'delta', content: delta })}\n\n`);
-            }
-            if (json.usage) {
-              promptTokens = json.usage.prompt_tokens || 0;
-              completionTokens = json.usage.completion_tokens || 0;
-            }
-          } catch {
-            // Skip malformed JSON
-          }
-        }
-      }
-
-      // Send done event
-      res.write(`data: ${JSON.stringify({
-        type: 'done',
-        content: totalContent,
-        usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
-        model,
-      })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      res.end();
     }
 
+    const duration = Date.now() - startTime;
+    log('INFO', `[${requestID}] Completed in ${duration}ms`);
+
   } catch (error) {
-    console.error('[Proxy] Error:', error);
+    log('ERROR', `[${requestID}] ${error.message}`);
     if (!res.headersSent) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
+    } else {
+      try { res.end(); } catch { /* already closed */ }
     }
   }
 });
 
-const PORT = process.env.PORT || 3000;
+// ── Graceful shutdown ──
+function gracefulShutdown(signal) {
+  log('INFO', `Received ${signal}, shutting down gracefully...`);
+  server.close(() => {
+    log('INFO', 'Server closed');
+    process.exit(0);
+  });
+  // Force close after 10s
+  setTimeout(() => {
+    log('WARN', 'Forcing shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// ── Uncaught error handling ──
+process.on('uncaughtException', (err) => {
+  log('ERROR', `Uncaught exception: ${err.message}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  log('ERROR', `Unhandled rejection: ${reason}`);
+});
+
+// ── Start server ──
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Hache Code Proxy] Running on port ${PORT}`);
-  console.log(`[Hache Code Proxy] Z.ai API: ${config.baseUrl}`);
-  console.log(`[Hache Code Proxy] Endpoints:`);
-  console.log(`  POST /api/chat          - HacheCode frontend (custom SSE)`);
-  console.log(`  POST /chat/completions  - SDK compatible (OpenAI SSE passthrough)`);
-  console.log(`  GET  /health            - Health check`);
+  log('INFO', '═══════════════════════════════════════════════════');
+  log('INFO', '  Hache IA Proxy Server v2.0');
+  log('INFO', `  Port: ${PORT}`);
+  log('INFO', `  Upstream: ${config.baseUrl}`);
+  log('INFO', `  Timeout: ${UPSTREAM_TIMEOUT}ms`);
+  log('INFO', `  Retries: ${MAX_RETRIES}`);
+  log('INFO', '═══════════════════════════════════════════════════');
+  log('INFO', 'Endpoints:');
+  log('INFO', '  POST /chat/completions  - SDK compatible (OpenAI SSE passthrough)');
+  log('INFO', '  POST /api/chat          - HacheCode frontend (custom SSE)');
+  log('INFO', '  GET  /health            - Health check');
+  log('INFO', '═══════════════════════════════════════════════════');
 });

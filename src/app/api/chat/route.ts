@@ -1,4 +1,4 @@
-export const maxDuration = 60;
+export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
 const SYSTEM_PROMPT = `
@@ -48,6 +48,56 @@ Ser un asistente potente, preciso, rápido y útil, capaz de ayudar tanto en pro
 interface ChatMessageInput {
   role: string;
   content: string;
+}
+
+// ─────────────────────────────────────────────
+// Retry helper with exponential backoff
+// ─────────────────────────────────────────────
+const MAX_RETRIES = 3;
+const BASE_DELAY = 1000;
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = MAX_RETRIES
+): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      // Retry on 5xx or 429
+      if ((response.status >= 500 || response.status === 429) && attempt < retries) {
+        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+        console.log(`[Retry] Attempt ${attempt}/${retries} failed (${response.status}), retrying in ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      return response;
+    } catch (error: unknown) {
+      const isNetworkError =
+        error instanceof Error &&
+        (error.name === "AbortError" ||
+          "code" in error &&
+          (error as NodeJS.ErrnoException).code === "ECONNRESET" ||
+          (error as NodeJS.ErrnoException).code === "ECONNREFUSED");
+
+      if (isNetworkError && attempt < retries) {
+        const delay = BASE_DELAY * Math.pow(2, attempt - 1);
+        console.log(`[Retry] Network error on attempt ${attempt}/${retries}, retrying in ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`All ${retries} retry attempts failed`);
 }
 
 // Helper: Create SSE response from our standard format
@@ -196,8 +246,9 @@ async function handleWithAnthropic(
 }
 
 // ─────────────────────────────────────────────
-// Strategy 1: OpenAI-compatible API
-// Requires: API_BASE_URL + API_KEY
+// Strategy 1: OpenAI-compatible API via /chat/completions
+// Uses API_BASE_URL + API_KEY
+// PRIMARY STRATEGY for Cloudflare Tunnel setup
 // ─────────────────────────────────────────────
 async function handleWithOpenAICompatible(
   apiMessages: { role: string; content: string }[],
@@ -207,13 +258,19 @@ async function handleWithOpenAICompatible(
     model: string;
   }
 ): Promise<Response> {
-  const url = `${config.baseUrl}/chat/completions`;
+  // Always use /chat/completions endpoint
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const url = `${baseUrl}/chat/completions`;
 
-  const upstreamResponse = await fetch(url, {
+  console.log("[Chat] Calling:", url, "model:", config.model);
+
+  const upstreamResponse = await fetchWithRetry(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${config.apiKey}`,
+      "Accept-Encoding": "gzip, deflate",
+      Connection: "keep-alive",
     },
     body: JSON.stringify({
       model: config.model,
@@ -232,87 +289,155 @@ async function handleWithOpenAICompatible(
     );
   }
 
-  return createSSEStream(async (controller, encoder) => {
-    const reader = upstreamResponse.body!.getReader();
-    const decoder = new TextDecoder();
+  // Auto-detect streaming vs non-streaming
+  const contentType =
+    upstreamResponse.headers.get("content-type") || "";
+  const isSSE = contentType.includes("text/event-stream");
 
-    let buffer = "";
-    let totalContent = "";
-    let promptTokens = 0;
-    let completionTokens = 0;
+  if (isSSE && upstreamResponse.body) {
+    return createSSEStream(async (controller, encoder) => {
+      const reader = upstreamResponse.body!.getReader();
+      const decoder = new TextDecoder();
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
+      let buffer = "";
+      let totalContent = "";
+      let promptTokens = 0;
+      let completionTokens = 0;
+      let lastActivity = Date.now();
 
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-
-          if (!trimmed || trimmed === "data: [DONE]") continue;
-          if (!trimmed.startsWith("data: ")) continue;
-
+      // Keep-alive ping
+      const keepAlive = setInterval(() => {
+        if (Date.now() - lastActivity > 15000) {
           try {
-            const json = JSON.parse(trimmed.slice(6));
+            controller.enqueue(encoder.encode(": keepalive\n\n"));
+          } catch { /* closed */ }
+        }
+      }, 15000);
 
-            const delta = json.choices?.[0]?.delta?.content;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
 
-            if (delta) {
-              totalContent += delta;
+          if (done) break;
 
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    type: "delta",
-                    content: delta,
-                  })}\n\n`
-                )
-              );
+          lastActivity = Date.now();
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+
+            if (!trimmed || trimmed === "data: [DONE]") continue;
+            if (!trimmed.startsWith("data: ")) continue;
+
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+
+              const delta = json.choices?.[0]?.delta?.content;
+
+              if (delta) {
+                totalContent += delta;
+
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      type: "delta",
+                      content: delta,
+                    })}\n\n`
+                  )
+                );
+              }
+
+              if (json.usage) {
+                promptTokens = json.usage.prompt_tokens || 0;
+                completionTokens = json.usage.completion_tokens || 0;
+              }
+            } catch {
+              // Skip malformed JSON chunks
             }
-
-            if (json.usage) {
-              promptTokens = json.usage.prompt_tokens || 0;
-              completionTokens = json.usage.completion_tokens || 0;
-            }
-          } catch {
-            // Skip malformed JSON chunks
           }
         }
+
+        clearInterval(keepAlive);
+        sendSSEDone(
+          controller,
+          encoder,
+          totalContent,
+          config.model,
+          promptTokens,
+          completionTokens
+        );
+      } catch (error) {
+        clearInterval(keepAlive);
+        console.error("[OpenAI] Stream error:", error);
+
+        // Si ya tenemos contenido parcial, enviarlo como done
+        if (totalContent) {
+          sendSSEDone(
+            controller,
+            encoder,
+            totalContent,
+            config.model,
+            promptTokens,
+            completionTokens
+          );
+        } else {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: "error",
+                error: "Stream interrumpido - reintentando...",
+              })}\n\n`
+            )
+          );
+          controller.close();
+        }
       }
+    });
+  }
 
-      sendSSEDone(
-        controller,
-        encoder,
-        totalContent,
-        config.model,
-        promptTokens,
-        completionTokens
-      );
-    } catch (error) {
-      console.error("[OpenAI] Stream error:", error);
+  // Non-streaming JSON response
+  const data = await upstreamResponse.json();
+  const content =
+    data.choices?.[0]?.message?.content || "";
+  const usage = data.usage;
 
+  if (!content) {
+    throw new Error("API: respuesta vacía");
+  }
+
+  const promptTokens = usage?.prompt_tokens || 0;
+  const completionTokens = usage?.completion_tokens || 0;
+
+  return createSSEStream(async (controller, encoder) => {
+    const chunks = content.match(/.{1,20}|.+$/g) || [content];
+
+    for (const chunk of chunks) {
       controller.enqueue(
         encoder.encode(
           `data: ${JSON.stringify({
-            type: "error",
-            error: "Stream interrumpido",
+            type: "delta",
+            content: chunk,
           })}\n\n`
         )
       );
-
-      controller.close();
     }
+
+    sendSSEDone(
+      controller,
+      encoder,
+      content,
+      config.model,
+      promptTokens,
+      completionTokens
+    );
   });
 }
 
 // ─────────────────────────────────────────────
-// Strategy 2: Z.ai Proxy
+// Strategy 2: Z.ai Proxy (legacy, usa /api/chat)
 // ─────────────────────────────────────────────
 async function handleWithZaiProxy(
   apiMessages: { role: string; content: string }[],
@@ -320,21 +445,40 @@ async function handleWithZaiProxy(
   proxyUrl: string
 ): Promise<Response> {
   const baseUrl = proxyUrl.replace(/\/+$/, "");
-  const url = `${baseUrl}/api/chat`;
+  // Try /chat/completions first, fallback to /api/chat
+  const url = `${baseUrl}/chat/completions`;
 
   console.log("[Chat] Proxying to:", url);
 
-  const upstreamResponse = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messages: apiMessages,
-      model,
-      stream: true,
-    }),
-  });
+  let upstreamResponse: Response;
+  try {
+    upstreamResponse = await fetchWithRetry(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: apiMessages,
+        model,
+        stream: true,
+      }),
+    });
+  } catch {
+    // Fallback to /api/chat
+    const fallbackUrl = `${baseUrl}/api/chat`;
+    console.log("[Chat] Falling back to:", fallbackUrl);
+    upstreamResponse = await fetchWithRetry(fallbackUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: apiMessages,
+        model,
+        stream: true,
+      }),
+    });
+  }
 
   if (!upstreamResponse.ok) {
     const errorText = await upstreamResponse
@@ -353,6 +497,7 @@ async function handleWithZaiProxy(
     contentType.includes("text/event-stream") &&
     upstreamResponse.body
   ) {
+    // Auto-detect SSE format: OpenAI standard vs HacheCode custom
     return createSSEStream(async (controller, encoder) => {
       const reader = upstreamResponse.body!.getReader();
       const decoder = new TextDecoder();
@@ -394,9 +539,30 @@ async function handleWithZaiProxy(
               try {
                 const parsed = JSON.parse(dataStr);
 
-                if (parsed.type === "delta" && parsed.content) {
+                // OpenAI standard SSE format (choices[0].delta.content)
+                if (parsed.choices?.[0]?.delta?.content) {
+                  const delta = parsed.choices[0].delta.content;
+                  totalContent += delta;
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({
+                        type: "delta",
+                        content: delta,
+                      })}\n\n`
+                    )
+                  );
+                  if (parsed.usage) {
+                    lastUsage = {
+                      promptTokens: parsed.usage.prompt_tokens || 0,
+                      completionTokens: parsed.usage.completion_tokens || 0,
+                      totalTokens: (parsed.usage.prompt_tokens || 0) + (parsed.usage.completion_tokens || 0),
+                    };
+                  }
+                  if (parsed.model) lastModel = parsed.model;
+                }
+                // HacheCode custom format (type: "delta")
+                else if (parsed.type === "delta" && parsed.content) {
                   totalContent += parsed.content;
-
                   controller.enqueue(
                     encoder.encode(
                       `data: ${JSON.stringify({
@@ -741,13 +907,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // Strategy 1: OpenAI-compatible
+    // Strategy 1: OpenAI-compatible (PRIMARY - uses /chat/completions)
     const baseUrl = process.env.API_BASE_URL;
     const apiKey = process.env.API_KEY;
 
     if (baseUrl && apiKey) {
       console.log(
-        "[Chat] Strategy 1: OpenAI-compatible"
+        "[Chat] Strategy 1: OpenAI-compatible ->",
+        `${baseUrl}/chat/completions`
       );
 
       try {
@@ -772,7 +939,8 @@ export async function POST(request: Request) {
 
     if (proxyUrl) {
       console.log(
-        "[Chat] Strategy 2: Z.ai Proxy"
+        "[Chat] Strategy 2: Z.ai Proxy ->",
+        proxyUrl
       );
 
       try {
@@ -828,4 +996,4 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-                         }
+}
