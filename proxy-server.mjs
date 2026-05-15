@@ -149,8 +149,9 @@ function addCompression(req, res) {
 // ─────────────────────────────────────────────
 // API Call con retries y backoff
 // ─────────────────────────────────────────────
-async function callZaiAPI(apiMessages, model, stream, retryCount = 0) {
-  const apiUrl = `${config.baseUrl}/chat/completions`;
+async function callZaiAPI(apiMessages, model, stream, retryCount = 0, isVision = false) {
+  // Vision requests use a different endpoint
+  const apiUrl = isVision ? `${config.baseUrl}/chat/completions/vision` : `${config.baseUrl}/chat/completions`;
   const apiHeaders = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${config.apiKey}`,
@@ -193,7 +194,7 @@ async function callZaiAPI(apiMessages, model, stream, retryCount = 0) {
         const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount);
         log('WARN', `API error ${apiResponse.status}, retrying in ${delay}ms (attempt ${attempt})`);
         await sleep(delay);
-        return callZaiAPI(apiMessages, model, stream, retryCount + 1);
+        return callZaiAPI(apiMessages, model, stream, retryCount + 1, isVision);
       }
 
       log('ERROR', `API error ${apiResponse.status}: ${errorText.slice(0, 200)}`);
@@ -211,7 +212,7 @@ async function callZaiAPI(apiMessages, model, stream, retryCount = 0) {
         const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount);
         log('WARN', `API timeout, retrying in ${delay}ms (attempt ${attempt})`);
         await sleep(delay);
-        return callZaiAPI(apiMessages, model, stream, retryCount + 1);
+        return callZaiAPI(apiMessages, model, stream, retryCount + 1, isVision);
       }
       throw new Error(`API timeout after ${MAX_RETRIES} attempts (${UPSTREAM_TIMEOUT}ms each)`);
     }
@@ -222,7 +223,7 @@ async function callZaiAPI(apiMessages, model, stream, retryCount = 0) {
         const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount);
         log('WARN', `Network error (${error.code}), retrying in ${delay}ms (attempt ${attempt})`);
         await sleep(delay);
-        return callZaiAPI(apiMessages, model, stream, retryCount + 1);
+        return callZaiAPI(apiMessages, model, stream, retryCount + 1, isVision);
       }
     }
 
@@ -554,17 +555,20 @@ const server = createServer(async (req, res) => {
     // Preserve image_url content for vision support
     const apiMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
-      ...messages.slice(-20).map(m => {
-        // If content is already in vision format (array of parts), pass through
-        if (Array.isArray(m.content)) {
-          return { role: m.role, content: m.content };
-        }
-        return { role: m.role, content: m.content };
-      })
+      ...messages.slice(-20).map(m => ({
+        role: m.role,
+        content: m.content, // Pass through as-is (string or vision array)
+      }))
     ];
 
-    // Call API con retries
-    const apiResponse = await callZaiAPI(apiMessages, model, clientStream);
+    // Detect if any message contains vision content (array with image_url)
+    const hasVisionContent = apiMessages.some(m => Array.isArray(m.content));
+    if (hasVisionContent) {
+      log('INFO', `[${requestID}] Vision content detected, using /chat/completions/vision endpoint`);
+    }
+
+    // Call API con retries (use vision endpoint if images are present)
+    const apiResponse = await callZaiAPI(apiMessages, model, clientStream, 0, hasVisionContent);
     const streamType = detectStreamType(apiResponse);
     log('INFO', `[${requestID}] Upstream response: ${streamType}, stream=${clientStream}`);
 
