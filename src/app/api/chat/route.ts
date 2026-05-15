@@ -47,9 +47,16 @@ REGLAS IMPORTANTES:
 OBJETIVO:
 Ser un asistente potente, preciso, rápido y útil, capaz de ayudar tanto en programación como en tareas inteligentes generales.
 `;
+// Vision content part (OpenAI-compatible format)
+interface VisionContentPart {
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: { url: string };
+}
+
 interface ChatMessageInput {
   role: string;
-  content: string;
+  content: string | VisionContentPart[];
 }
 
 // ─────────────────────────────────────────────
@@ -160,7 +167,7 @@ function sendSSEDone(
 // Requires: ANTHROPIC_API_KEY
 // ─────────────────────────────────────────────
 async function handleWithAnthropic(
-  apiMessages: { role: string; content: string }[],
+  apiMessages: { role: string; content: string | VisionContentPart[] }[],
   model: string
 ): Promise<Response> {
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
@@ -169,14 +176,17 @@ async function handleWithAnthropic(
 
   const client = new Anthropic({ apiKey });
 
-  const systemMessage =
-    apiMessages.find((m) => m.role === "system")?.content || "";
+  const systemMsg = apiMessages.find((m) => m.role === "system");
+  const systemMessage = typeof systemMsg?.content === "string" ? systemMsg.content : "";
 
+  // Anthropic uses a different vision format; convert OpenAI vision to text for now
   const chatMessages = apiMessages
     .filter((m) => m.role !== "system")
     .map((m) => ({
       role: m.role as "user" | "assistant",
-      content: m.content,
+      content: typeof m.content === "string"
+        ? m.content
+        : m.content.map((p) => p.type === "text" ? p.text || "" : "[image]").join(" "),
     }));
 
   const stream = client.messages.stream({
@@ -253,7 +263,7 @@ async function handleWithAnthropic(
 // PRIMARY STRATEGY for Cloudflare Tunnel setup
 // ─────────────────────────────────────────────
 async function handleWithOpenAICompatible(
-  apiMessages: { role: string; content: string }[],
+  apiMessages: { role: string; content: string | VisionContentPart[] }[],
   config: {
     baseUrl: string;
     apiKey: string;
@@ -442,7 +452,7 @@ async function handleWithOpenAICompatible(
 // Strategy 2: Z.ai Proxy (legacy, usa /api/chat)
 // ─────────────────────────────────────────────
 async function handleWithZaiProxy(
-  apiMessages: { role: string; content: string }[],
+  apiMessages: { role: string; content: string | VisionContentPart[] }[],
   model: string,
   proxyUrl: string
 ): Promise<Response> {
@@ -666,7 +676,7 @@ async function handleWithZaiProxy(
 // Strategy 3: Z.ai SDK
 // ─────────────────────────────────────────────
 async function handleWithZaiSDK(
-  apiMessages: { role: string; content: string }[],
+  apiMessages: { role: string; content: string | VisionContentPart[] }[],
   model: string
 ): Promise<Response> {
   const ZAI = (await import("z-ai-web-dev-sdk")).default;
@@ -874,7 +884,7 @@ export async function POST(request: Request) {
       },
       ...recentMessages.map((m: ChatMessageInput) => ({
         role: m.role as "user" | "assistant",
-        content: m.content,
+        content: m.content, // Pass through as-is (string for text, array for vision)
       })),
     ];
 

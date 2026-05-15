@@ -77,7 +77,7 @@ export function ChatInput() {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { sendMessage, isStreaming, isGeneratingImage, pendingImages, addPendingImage, removePendingImage, clearPendingImages, generateImage } = useChatStore();
+  const { sendMessage, isStreaming, isGeneratingImage, pendingImages, addPendingImage, removePendingImage, clearPendingImages, generateImage, selectedModel, setSelectedModel } = useChatStore();
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
@@ -95,13 +95,23 @@ export function ChatInput() {
       const prompt = imageGenMatch[1];
       await generateImage(prompt);
     } else {
+      // Auto-switch to vision model if images are attached but current model doesn't support vision
+      if (pendingImages.length > 0) {
+        const currentModel = MODELS.find((m) => m.id === selectedModel);
+        if (!currentModel?.supportsVision) {
+          const visionModel = MODELS.find((m) => m.supportsVision);
+          if (visionModel) {
+            setSelectedModel(visionModel.id);
+          }
+        }
+      }
       // Convert pending images to ImageData
       const images = pendingImages.length > 0
         ? pendingImages.map((pi) => ({ url: pi.dataUrl, alt: pi.name }))
         : undefined;
       await sendMessage(trimmed, images);
     }
-  }, [input, isStreaming, isGeneratingImage, sendMessage, generateImage, pendingImages]);
+  }, [input, isStreaming, isGeneratingImage, sendMessage, generateImage, pendingImages, selectedModel, setSelectedModel]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
