@@ -60,3 +60,10 @@ safe-start.*
 start-server.*
 worklog.md
 bun.lock
+
+# Sandbox/VPS files (no longer needed - direct API mode)
+proxy-server.mjs
+keepalive.mjs
+ecosystem.config.js
+ecosystem.config.sandbox.js
+deploy-vps.sh

@@ -36,12 +36,12 @@ export interface ModelOption {
   supportsImageGen?: boolean;
 }
 
-// Models that work with Z.ai proxy/SDK (no API key needed)
+// Modelos disponibles de Hache IA
 export const MODELS: ModelOption[] = [
-  { id: "glm-4-plus", name: "HJ-4 Plus", description: "Mejor equilibrio entre velocidad e inteligencia", supportsVision: true, supportsImageGen: false },
-  { id: "glm-4v-plus", name: "HJ-4V Plus", description: "Vision: analiza imágenes", supportsVision: true, supportsImageGen: false },
-  { id: "glm-4-flash", name: "HJ-4 Flash", description: "Respuestas ultrarrápidas", supportsVision: false, supportsImageGen: false },
-  { id: "glm-4-long", name: "HJ-4 Long", description: "Contexto largo hasta 128K tokens", supportsVision: false, supportsImageGen: false },
+  { id: "hj-4-plus", name: "HJ-4 Plus", description: "Mejor equilibrio entre velocidad e inteligencia", supportsVision: true, supportsImageGen: false },
+  { id: "hj-4v-plus", name: "HJ-4V Plus", description: "Vision: analiza imágenes", supportsVision: true, supportsImageGen: false },
+  { id: "hj-4-flash", name: "HJ-4 Flash", description: "Respuestas ultrarrápidas", supportsVision: false, supportsImageGen: false },
+  { id: "hj-4-long", name: "HJ-4 Long", description: "Contexto largo hasta 128K tokens", supportsVision: false, supportsImageGen: false },
 ];
 
 export interface PendingImage {
@@ -110,7 +110,7 @@ export const useChatStore = create<ChatState>()(
   persist(
     (set, get) => ({
       messages: [WELCOME_MESSAGE],
-      selectedModel: "glm-4-plus",
+      selectedModel: "hj-4-plus",
       isStreaming: false,
       isGeneratingImage: false,
       sessionContext: {

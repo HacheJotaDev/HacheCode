@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Call the proxy's image generation endpoint
+    // Call image generation endpoint
     const url = `${baseUrl.replace(/\/+$/, "")}/images/generations`;
 
     console.log("[Image] Generating:", prompt.slice(0, 80), "size:", imageGenSize);
