@@ -63,6 +63,45 @@ function resolveModel(modelId: string): string {
   return MODEL_MAP[modelId] || modelId;
 }
 
+// ─────────────────────────────────────────────
+// JWT token generation for API authentication
+// Handles API keys in {id}.{secret} format
+// ─────────────────────────────────────────────
+function base64url(str: string): string {
+  return Buffer.from(str)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function generateJWT(apiKey: string): string {
+  const parts = apiKey.split(".");
+  if (parts.length !== 2) {
+    // Not in id.secret format, use as-is (plain Bearer token)
+    return apiKey;
+  }
+
+  const [id, secret] = parts;
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = base64url(JSON.stringify({ alg: "HS256", sign_type: "SIGN" }));
+  const payload = base64url(
+    JSON.stringify({ api_key: id, exp: now + 3600, timestamp: now })
+  );
+
+  const crypto = require("crypto");
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(`${header}.${payload}`)
+    .digest("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+
+  return `${header}.${payload}.${signature}`;
+}
+
 // Vision content part format
 interface VisionContentPart {
   type: "text" | "image_url";
@@ -194,11 +233,14 @@ async function handleChat(
 
   console.log("[Chat] Calling:", url, "model:", config.model);
 
+  // Generate JWT token if API key is in id.secret format
+  const authToken = generateJWT(config.apiKey);
+
   const upstreamResponse = await fetchWithRetry(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${authToken}`,
       "Accept-Encoding": "gzip, deflate",
       Connection: "keep-alive",
     },
@@ -409,9 +451,9 @@ export async function POST(request: Request) {
     const frontendModel = model || "hj-4-plus";
     const realModel = resolveModel(frontendModel);
 
-    // Also check env var (for deployment overrides)
-    const apiModel =
-      process.env.API_MODEL || realModel;
+    // Env var API_MODEL can be a frontend ID (hj-*) or real ID — resolve it too
+    const envModel = process.env.API_MODEL;
+    const apiModel = envModel ? resolveModel(envModel) : realModel;
 
     const baseUrl = process.env.API_BASE_URL;
     const apiKey = process.env.API_KEY;

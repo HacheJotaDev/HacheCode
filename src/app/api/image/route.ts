@@ -1,6 +1,43 @@
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
+// ─────────────────────────────────────────────
+// JWT token generation (same as chat route)
+// ─────────────────────────────────────────────
+function base64url(str: string): string {
+  return Buffer.from(str)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function generateJWT(apiKey: string): string {
+  const parts = apiKey.split(".");
+  if (parts.length !== 2) {
+    return apiKey;
+  }
+
+  const [id, secret] = parts;
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = base64url(JSON.stringify({ alg: "HS256", sign_type: "SIGN" }));
+  const payload = base64url(
+    JSON.stringify({ api_key: id, exp: now + 3600, timestamp: now })
+  );
+
+  const crypto = require("crypto");
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(`${header}.${payload}`)
+    .digest("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+
+  return `${header}.${payload}.${signature}`;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -41,13 +78,17 @@ export async function POST(request: Request) {
 
     console.log("[Image] Generating:", prompt.slice(0, 80), "size:", imageGenSize);
 
+    // Generate JWT token if API key is in id.secret format
+    const authToken = apiKey ? generateJWT(apiKey) : "";
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
       body: JSON.stringify({
+        model: "cogview-4",
         prompt,
         size: imageGenSize,
       }),
