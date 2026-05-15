@@ -53,9 +53,13 @@ Ser un asistente potente, preciso, rápido y útil, capaz de ayudar tanto en pro
 // The frontend only sees "hj-*" names, never the real provider names
 // ─────────────────────────────────────────────
 const MODEL_MAP: Record<string, string> = {
+  // Gratis
+  "hj-4-flash": "glm-4-flash",
+  "hj-4.7-flash": "glm-4.7-flash",
+  "hj-z1-flash": "glm-z1-flash",
+  // De pago
   "hj-4-plus": "glm-4-plus",
   "hj-4v-plus": "glm-4v-plus",
-  "hj-4-flash": "glm-4-flash",
   "hj-4-long": "glm-4-long",
 };
 

@@ -88,7 +88,7 @@ export async function POST(request: Request) {
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       },
       body: JSON.stringify({
-        model: "cogview-4",
+        model: "cogviewx-flash",
         prompt,
         size: imageGenSize,
       }),

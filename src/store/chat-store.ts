@@ -37,11 +37,16 @@ export interface ModelOption {
 }
 
 // Modelos disponibles de Hache IA
+// 👑 = consume tokens de pago | sin corona = gratis ilimitado
 export const MODELS: ModelOption[] = [
-  { id: "hj-4-plus", name: "HJ-4 Plus", description: "Mejor equilibrio entre velocidad e inteligencia", supportsVision: true, supportsImageGen: false },
-  { id: "hj-4v-plus", name: "HJ-4V Plus", description: "Vision: analiza imágenes", supportsVision: true, supportsImageGen: false },
-  { id: "hj-4-flash", name: "HJ-4 Flash", description: "Respuestas ultrarrápidas", supportsVision: false, supportsImageGen: false },
-  { id: "hj-4-long", name: "HJ-4 Long", description: "Contexto largo hasta 128K tokens", supportsVision: false, supportsImageGen: false },
+  // ── GRATIS ──
+  { id: "hj-4-flash", name: "HJ-4 Flash", description: "GRATIS — Respuestas ultrarrápidas", supportsVision: false, supportsImageGen: false },
+  { id: "hj-4.7-flash", name: "HJ-4.7 Flash", description: "GRATIS — Modelo nuevo, rápido y potente", supportsVision: true, supportsImageGen: false },
+  { id: "hj-z1-flash", name: "HJ-Z1 Flash", description: "GRATIS — Razonamiento profundo", supportsVision: false, supportsImageGen: false },
+  // ── DE PAGO 👑 ──
+  { id: "hj-4-plus", name: "HJ-4 Plus 👑", description: "Mejor equilibrio entre velocidad e inteligencia", supportsVision: true, supportsImageGen: false },
+  { id: "hj-4v-plus", name: "HJ-4V Plus 👑", description: "Vision: analiza imágenes", supportsVision: true, supportsImageGen: false },
+  { id: "hj-4-long", name: "HJ-4 Long 👑", description: "Contexto largo hasta 128K tokens", supportsVision: false, supportsImageGen: false },
 ];
 
 export interface PendingImage {
@@ -110,7 +115,7 @@ export const useChatStore = create<ChatState>()(
   persist(
     (set, get) => ({
       messages: [WELCOME_MESSAGE],
-      selectedModel: "hj-4-plus",
+      selectedModel: "hj-4-flash",
       isStreaming: false,
       isGeneratingImage: false,
       sessionContext: {
