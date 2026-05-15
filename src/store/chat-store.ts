@@ -11,6 +11,12 @@ export interface ToolUse {
   expanded?: boolean;
 }
 
+export interface ImageData {
+  url: string; // base64 data URL or blob URL
+  alt?: string;
+  isGenerated?: boolean; // true if AI-generated image
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -19,20 +25,30 @@ export interface ChatMessage {
   toolUses?: ToolUse[];
   isStreaming?: boolean;
   isError?: boolean;
+  images?: ImageData[]; // Attached images (user or AI-generated)
 }
 
 export interface ModelOption {
   id: string;
   name: string;
   description: string;
+  supportsVision?: boolean;
+  supportsImageGen?: boolean;
 }
 
 // Models that work with Z.ai proxy/SDK (no API key needed)
 export const MODELS: ModelOption[] = [
-  { id: "glm-4-plus", name: "HJ-4 Plus", description: "Mejor equilibrio entre velocidad e inteligencia" },
-  { id: "glm-4-flash", name: "HJ-4 Flash", description: "Respuestas ultrarrápidas" },
-  { id: "glm-4-long", name: "HJ-4 Long", description: "Contexto largo hasta 128K tokens" },
+  { id: "glm-4-plus", name: "HJ-4 Plus", description: "Mejor equilibrio entre velocidad e inteligencia", supportsVision: true, supportsImageGen: false },
+  { id: "glm-4v-plus", name: "HJ-4V Plus", description: "Vision: analiza imágenes", supportsVision: true, supportsImageGen: false },
+  { id: "glm-4-flash", name: "HJ-4 Flash", description: "Respuestas ultrarrápidas", supportsVision: false, supportsImageGen: false },
+  { id: "glm-4-long", name: "HJ-4 Long", description: "Contexto largo hasta 128K tokens", supportsVision: false, supportsImageGen: false },
 ];
+
+export interface PendingImage {
+  dataUrl: string;
+  name: string;
+  file?: File;
+}
 
 export interface SessionContext {
   files: string[];
@@ -44,13 +60,15 @@ interface ChatState {
   messages: ChatMessage[];
   selectedModel: string;
   isStreaming: boolean;
+  isGeneratingImage: boolean;
   sessionContext: SessionContext;
   sidebarOpen: boolean;
   contextPanelOpen: boolean;
+  pendingImages: PendingImage[];
 
   addMessage: (message: Omit<ChatMessage, "id" | "timestamp">) => void;
   updateLastMessage: (content: string) => void;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, images?: ImageData[]) => Promise<void>;
   setSelectedModel: (model: string) => void;
   setIsStreaming: (streaming: boolean) => void;
   toggleSidebar: () => void;
@@ -59,6 +77,10 @@ interface ChatState {
   removeContextFile: (file: string) => void;
   updateTokenUsage: (tokens: number) => void;
   clearChat: () => void;
+  addPendingImage: (image: PendingImage) => void;
+  removePendingImage: (index: number) => void;
+  clearPendingImages: () => void;
+  generateImage: (prompt: string) => Promise<void>;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
@@ -73,6 +95,8 @@ Tu asistente inteligente hecho por HacheJota
 Puedo ayudarte a programar, responder preguntas, crear contenido, explicar temas, resolver problemas y mucho más.
 
 - **Código y desarrollo**
+- **Análisis de imágenes** — Adjunta una imagen y la analizo
+- **Generación de imágenes** — Pídeme que genere una imagen
 - **Ideas y creatividad**
 - **Información y ayuda diaria**
 - **Depuración y automatización**
@@ -88,13 +112,15 @@ export const useChatStore = create<ChatState>()(
       messages: [WELCOME_MESSAGE],
       selectedModel: "glm-4-plus",
       isStreaming: false,
+      isGeneratingImage: false,
       sessionContext: {
         files: [],
         totalTokens: 0,
         maxTokens: 200000,
       },
-      sidebarOpen: true,
+      sidebarOpen: false, // Start with sidebar closed — open directly in chat
       contextPanelOpen: false,
+      pendingImages: [],
 
       addMessage: (message) => {
         const newMessage: ChatMessage = {
@@ -116,22 +142,49 @@ export const useChatStore = create<ChatState>()(
         });
       },
 
-      sendMessage: async (content: string) => {
-        const { messages, selectedModel, addMessage, setIsStreaming } = get();
+      sendMessage: async (content: string, images?: ImageData[]) => {
+        const { messages, selectedModel, addMessage, setIsStreaming, clearPendingImages } = get();
 
-        addMessage({ role: "user", content });
+        // Add user message with images
+        addMessage({ role: "user", content, images: images && images.length > 0 ? images : undefined });
         addMessage({ role: "assistant", content: "", isStreaming: true });
         setIsStreaming(true);
 
         try {
           const apiMessages = messages
             .filter((m) => m.id !== "welcome" && m.role !== "system")
-            .map((m) => ({
-              role: m.role as "user" | "assistant",
-              content: m.content,
-            }));
+            .map((m) => {
+              // If message has images, format as vision content (array of parts)
+              if (m.images && m.images.length > 0 && m.role === "user") {
+                const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+                  { type: "text", text: m.content },
+                ];
+                for (const img of m.images) {
+                  contentParts.push({
+                    type: "image_url",
+                    image_url: { url: img.url },
+                  });
+                }
+                return { role: m.role as "user" | "assistant", content: contentParts };
+              }
+              return { role: m.role as "user" | "assistant", content: m.content };
+            });
 
-          apiMessages.push({ role: "user", content });
+          // Add the current message (with images if any)
+          if (images && images.length > 0) {
+            const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+              { type: "text", text: content },
+            ];
+            for (const img of images) {
+              contentParts.push({
+                type: "image_url",
+                image_url: { url: img.url },
+              });
+            }
+            apiMessages.push({ role: "user", content: contentParts });
+          } else {
+            apiMessages.push({ role: "user", content });
+          }
 
           const response = await fetch("/api/chat", {
             method: "POST",
@@ -266,6 +319,9 @@ export const useChatStore = create<ChatState>()(
               };
             });
           }
+
+          // Clear pending images after sending
+          clearPendingImages();
         } catch (error) {
           const errorMsg =
             error instanceof Error
@@ -286,6 +342,76 @@ export const useChatStore = create<ChatState>()(
               };
             }
             return { messages: msgs, isStreaming: false };
+          });
+        }
+      },
+
+      generateImage: async (prompt: string) => {
+        const { addMessage, setIsStreaming } = get();
+
+        // Add user message
+        addMessage({ role: "user", content: `Genera una imagen: ${prompt}` });
+        addMessage({ role: "assistant", content: "Generando imagen...", isStreaming: true });
+        setIsStreaming(true);
+        set({ isGeneratingImage: true });
+
+        try {
+          const response = await fetch("/api/image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: "Error generando imagen" }));
+            throw new Error(errorData.error || "Error generando imagen");
+          }
+
+          const data = await response.json();
+          const imageData = data.data?.[0];
+
+          let imageUrl = "";
+          if (imageData?.b64_json) {
+            imageUrl = `data:image/png;base64,${imageData.b64_json}`;
+          } else if (imageData?.url) {
+            imageUrl = imageData.url;
+          } else {
+            throw new Error("No se recibió imagen");
+          }
+
+          // Update the assistant message with the generated image
+          set((state) => {
+            const msgs = [...state.messages];
+            const lastIdx = msgs.length - 1;
+            if (msgs[lastIdx]?.role === "assistant") {
+              msgs[lastIdx] = {
+                ...msgs[lastIdx],
+                content: `Imagen generada: **${prompt}**`,
+                isStreaming: false,
+                isError: false,
+                images: [{ url: imageUrl, alt: prompt, isGenerated: true }],
+              };
+            }
+            return {
+              messages: msgs,
+              isStreaming: false,
+              isGeneratingImage: false,
+            };
+          });
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : "Error generando imagen";
+          set((state) => {
+            const msgs = [...state.messages];
+            const lastIdx = msgs.length - 1;
+            if (msgs[lastIdx]?.role === "assistant") {
+              msgs[lastIdx] = {
+                ...msgs[lastIdx],
+                content: `Error generando imagen: ${errorMsg}`,
+                isStreaming: false,
+                isError: true,
+              };
+            }
+            return { messages: msgs, isStreaming: false, isGeneratingImage: false };
           });
         }
       },
@@ -314,14 +440,29 @@ export const useChatStore = create<ChatState>()(
         set((state) => ({
           sessionContext: { ...state.sessionContext, totalTokens: tokens },
         })),
-      clearChat: () => set({ messages: [WELCOME_MESSAGE], sessionContext: { ...get().sessionContext, totalTokens: 0 } }),
+      clearChat: () => set({ messages: [WELCOME_MESSAGE], sessionContext: { ...get().sessionContext, totalTokens: 0 }, pendingImages: [] }),
+      addPendingImage: (image) =>
+        set((state) => ({
+          pendingImages: [...state.pendingImages, image],
+        })),
+      removePendingImage: (index) =>
+        set((state) => ({
+          pendingImages: state.pendingImages.filter((_, i) => i !== index),
+        })),
+      clearPendingImages: () => set({ pendingImages: [] }),
     }),
     {
       name: "hache-ia-chat",
       partialize: (state) => ({
         messages: state.messages.map((m) => ({
           ...m,
-          isStreaming: false, // Always reset streaming on load
+          isStreaming: false,
+          // Don't persist large base64 images - only keep text and a flag
+          images: m.images?.map((img) => ({
+            url: img.isGenerated ? "" : img.url.startsWith("data:") ? "" : img.url,
+            alt: img.alt,
+            isGenerated: img.isGenerated,
+          })).filter((img) => img.url !== ""),
         })),
         selectedModel: state.selectedModel,
       }),

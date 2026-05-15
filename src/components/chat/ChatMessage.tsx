@@ -1,20 +1,109 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { User, Sparkles, AlertCircle, RotateCcw } from "lucide-react";
+import { User, AlertCircle, RotateCcw, Download, Maximize2, X } from "lucide-react";
 import { CodeBlock } from "./CodeBlock";
 import { ToolCallBlock } from "./ToolCallBlock";
 import { TypingIndicator } from "./TypingIndicator";
 import { useChatStore } from "@/store/chat-store";
-import type { ChatMessage as ChatMessageType } from "@/store/chat-store";
+import type { ChatMessage as ChatMessageType, ImageData } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 
 interface ChatMessageProps {
   message: ChatMessageType;
   index: number;
+}
+
+// Image display component with expand and download
+function MessageImage({ image, isUser }: { image: ImageData; isUser?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const handleDownload = () => {
+    const link = document.createElement("a");
+    link.href = image.url;
+    link.download = image.alt || "hache-ia-image.png";
+    link.click();
+  };
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className={`relative group rounded-xl overflow-hidden border border-border/20 ${
+          image.isGenerated ? "max-w-sm" : "max-w-[200px]"
+        }`}
+      >
+        <img
+          src={image.url}
+          alt={image.alt || "Imagen"}
+          className={`w-full object-cover rounded-xl cursor-pointer transition-all duration-200 ${
+            image.isGenerated ? "max-h-80" : "max-h-40"
+          }`}
+          onClick={() => setExpanded(true)}
+        />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+          <button
+            onClick={() => setExpanded(true)}
+            className="h-8 w-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-all"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleDownload}
+            className="h-8 w-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-all"
+          >
+            <Download className="h-4 w-4" />
+          </button>
+        </div>
+        {image.isGenerated && (
+          <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-purple-500/80 backdrop-blur-sm text-[9px] text-white font-medium">
+            IA
+          </div>
+        )}
+      </motion.div>
+
+      {/* Expanded view modal */}
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setExpanded(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            className="relative max-w-4xl max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={image.url}
+              alt={image.alt || "Imagen"}
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl"
+            />
+            <button
+              onClick={() => setExpanded(false)}
+              className="absolute top-3 right-3 h-8 w-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/70 transition-all"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
+              <button
+                onClick={handleDownload}
+                className="px-4 py-2 rounded-xl bg-white/20 backdrop-blur-sm text-white text-xs font-medium hover:bg-white/30 transition-all flex items-center gap-2"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Descargar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </>
+  );
 }
 
 // We need to create markdown components that have access to isStreaming
@@ -70,6 +159,13 @@ function createMarkdownComponents(isStreaming: boolean) {
         </a>
       );
     },
+    // Image in markdown content
+    img({ src, alt }: { src?: string; alt?: string }) {
+      if (src) {
+        return <MessageImage image={{ url: src, alt: alt || "" }} />;
+      }
+      return null;
+    },
   };
   return components;
 }
@@ -79,6 +175,7 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
   const isWelcome = message.id === "welcome";
   const isError = message.isError;
   const isStreaming = !!message.isStreaming;
+  const hasImages = message.images && message.images.length > 0;
 
   const markdownComponents = createMarkdownComponents(isStreaming);
 
@@ -141,6 +238,24 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
               </div>
               <RetryButton />
             </div>
+          </div>
+        )}
+
+        {/* User images */}
+        {isUser && hasImages && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {message.images!.map((img, i) => (
+              <MessageImage key={i} image={img} isUser />
+            ))}
+          </div>
+        )}
+
+        {/* AI generated images */}
+        {!isUser && hasImages && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {message.images!.map((img, i) => (
+              <MessageImage key={i} image={img} />
+            ))}
           </div>
         )}
 

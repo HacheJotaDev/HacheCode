@@ -365,18 +365,48 @@ async function streamSSECustom(apiResponse, res, model) {
 }
 
 // ─────────────────────────────────────────────
-// Request body parser
+// Request body parser (supports large payloads for images)
 // ─────────────────────────────────────────────
-function parseRequestBody(req) {
+function parseRequestBody(req, maxBodySize = 50 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', chunk => data += chunk);
+    const chunks = [];
+    let totalSize = 0;
+    req.on('data', chunk => {
+      totalSize += chunk.length;
+      if (totalSize > maxBodySize) {
+        reject(new Error('Request body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => {
-      try { resolve(JSON.parse(data)); }
+      try {
+        const data = Buffer.concat(chunks).toString('utf-8');
+        resolve(JSON.parse(data));
+      }
       catch (e) { reject(e); }
     });
     req.on('error', reject);
   });
+}
+
+// ─────────────────────────────────────────────
+// Image Generation (using z-ai-web-dev-sdk)
+// ─────────────────────────────────────────────
+let zaiInstance = null;
+async function getZaiInstance() {
+  if (!zaiInstance) {
+    const ZAI = (await import('z-ai-web-dev-sdk')).default;
+    zaiInstance = await ZAI.create();
+  }
+  return zaiInstance;
+}
+
+async function generateImage(prompt, size = '1024x1024') {
+  const zai = await getZaiInstance();
+  const response = await zai.images.generations.create({ prompt, size });
+  return response;
 }
 
 // ─────────────────────────────────────────────
@@ -441,6 +471,54 @@ const server = createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   const isChatCompletions = url === '/chat/completions' || url === '/v1/chat/completions';
   const isApiChat = url === '/api/chat';
+  const isImageGen = url === '/images/generations' || url === '/v1/images/generations';
+
+  // ── Image Generation Endpoint ──
+  if (req.method === 'POST' && isImageGen) {
+    try {
+      const body = await parseRequestBody(req, 5 * 1024 * 1024); // 5MB max for image gen request
+      const { prompt, size = '1024x1024' } = body;
+
+      if (!prompt || typeof prompt !== 'string') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Prompt is required' }));
+        return;
+      }
+
+      log('INFO', `[${requestID}] Image generation: "${prompt.slice(0, 80)}" size=${size}`);
+
+      const imageResponse = await generateImage(prompt, size);
+      const imageData = imageResponse.data?.[0];
+
+      if (imageData?.base64) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          created: Date.now(),
+          data: [{ b64_json: imageData.base64 }],
+          model: 'cogview-4',
+        }));
+      } else if (imageData?.url) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          created: Date.now(),
+          data: [{ url: imageData.url }],
+          model: 'cogview-4',
+        }));
+      } else {
+        throw new Error('No image data in response');
+      }
+
+      const duration = Date.now() - startTime;
+      log('INFO', `[${requestID}] Image generation completed in ${duration}ms`);
+    } catch (error) {
+      log('ERROR', `[${requestID}] Image generation failed: ${error.message}`);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Image generation failed: ${error.message}` }));
+      }
+    }
+    return;
+  }
 
   // ── 404 for unknown routes ──
   if (req.method !== 'POST' || (!isChatCompletions && !isApiChat)) {
@@ -450,6 +528,7 @@ const server = createServer(async (req, res) => {
       endpoints: {
         '/chat/completions': 'SDK compatible (OpenAI SSE passthrough)',
         '/api/chat': 'HacheCode frontend (custom SSE)',
+        '/images/generations': 'Image generation (CogView)',
         '/health': 'Health check',
       }
     }));
@@ -472,9 +551,16 @@ const server = createServer(async (req, res) => {
     }
 
     // Build API messages with system prompt
+    // Preserve image_url content for vision support
     const apiMessages = [
       { role: 'system', content: SYSTEM_PROMPT },
-      ...messages.slice(-20).map(m => ({ role: m.role, content: m.content }))
+      ...messages.slice(-20).map(m => {
+        // If content is already in vision format (array of parts), pass through
+        if (Array.isArray(m.content)) {
+          return { role: m.role, content: m.content };
+        }
+        return { role: m.role, content: m.content };
+      })
     ];
 
     // Call API con retries
@@ -556,8 +642,9 @@ server.listen(PORT, '::', () => {
   log('INFO', `  Retries: ${MAX_RETRIES}`);
   log('INFO', '═══════════════════════════════════════════════════');
   log('INFO', 'Endpoints:');
-  log('INFO', '  POST /chat/completions  - SDK compatible (OpenAI SSE passthrough)');
-  log('INFO', '  POST /api/chat          - HacheCode frontend (custom SSE)');
-  log('INFO', '  GET  /health            - Health check');
+  log('INFO', '  POST /chat/completions   - SDK compatible (OpenAI SSE passthrough)');
+  log('INFO', '  POST /api/chat           - HacheCode frontend (custom SSE)');
+  log('INFO', '  POST /images/generations - Image generation (CogView)');
+  log('INFO', '  GET  /health             - Health check');
   log('INFO', '═══════════════════════════════════════════════════');
 });
