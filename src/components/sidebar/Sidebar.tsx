@@ -135,35 +135,7 @@ export function Sidebar() {
               </Tooltip>
             </div>
           </motion.aside>
-        ) : (
-          <motion.div
-            key="sidebar-collapsed"
-            initial={{ width: 52, opacity: 1 }}
-            animate={{ width: 52, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="h-full flex flex-col items-center border-r border-border/15 bg-sidebar py-4 gap-3 shrink-0"
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-surface/60 transition-all duration-200"
-                  onClick={toggleSidebar}
-                >
-                  <PanelLeftOpen className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">Abrir panel</TooltipContent>
-            </Tooltip>
-            <img
-              src="/logo-hache-ia.png"
-              alt="Hache IA"
-              className="h-8 w-8 rounded-xl object-cover"
-            />
-          </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </TooltipProvider>
   );

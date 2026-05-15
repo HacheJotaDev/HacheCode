@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PanelRight } from "lucide-react";
+import { PanelLeftOpen, PanelRight } from "lucide-react";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 
 export default function HomePage() {
-  const { messages, isStreaming, contextPanelOpen, toggleContextPanel, sidebarOpen } =
+  const { messages, isStreaming, contextPanelOpen, toggleContextPanel, sidebarOpen, toggleSidebar } =
     useChatStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -36,6 +36,16 @@ export default function HomePage() {
           {/* Barra superior */}
           <div className="flex items-center justify-between px-5 py-2.5 border-b border-border/20 glass shrink-0 z-10">
             <div className="flex items-center gap-3">
+              {!sidebarOpen && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-surface/60 transition-all duration-200"
+                  onClick={toggleSidebar}
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </Button>
+              )}
               <img
                 src="/logo-hache-ia.png"
                 alt="Hache IA"
